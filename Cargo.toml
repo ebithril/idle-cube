@@ -1,0 +1,16 @@
+[package]
+name = "idle-cube"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+bitflags = "2.10.0"
+macroquad = "0.4"
+rand = "0.9.2"
+
+# WebAssembly optimization profile
+[profile.release]
+opt-level = "z"     # Optimize for size
+lto = true          # Enable Link Time Optimization
+codegen-units = 1   # Reduce parallel codegen for better optimization
+strip = true        # Strip symbols from binary
