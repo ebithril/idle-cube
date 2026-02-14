@@ -383,83 +383,70 @@ impl Cube {
         }
     }
 
+    fn get_corner_idx_for_move(&self, move_to_make: Move) -> [usize; 4] {
+        let corners = if move_to_make.contains(Move::U) {
+            [
+                get_idx(0, 2, 0),
+                get_idx(0, 2, 2),
+                get_idx(2, 2, 2),
+                get_idx(2, 2, 0),
+            ]
+        } else if move_to_make.contains(Move::R) {
+            [
+                get_idx(2, 0, 2),
+                get_idx(2, 0, 0),
+                get_idx(2, 2, 0),
+                get_idx(2, 2, 2),
+            ]
+        } else if move_to_make.contains(Move::F) {
+            [
+                get_idx(0, 2, 2),
+                get_idx(0, 0, 2),
+                get_idx(2, 0, 2),
+                get_idx(2, 2, 2),
+            ]
+        } else if move_to_make.contains(Move::D) {
+            [
+                get_idx(0, 0, 2),
+                get_idx(0, 0, 0),
+                get_idx(2, 0, 0),
+                get_idx(2, 0, 2),
+            ]
+        } else if move_to_make.contains(Move::L) {
+            [
+                get_idx(0, 0, 0),
+                get_idx(0, 0, 2),
+                get_idx(0, 2, 2),
+                get_idx(0, 2, 0),
+            ]
+        } else if move_to_make.contains(Move::B) {
+            [
+                get_idx(0, 0, 0),
+                get_idx(0, 2, 0),
+                get_idx(2, 2, 0),
+                get_idx(2, 0, 0),
+            ]
+        } else {
+            panic!("This shouldn't be possible")
+        };
+
+        if move_to_make.is_prime() {
+            let mut r_corners: [usize; 4] = [0, 0, 0, 0];
+            let mut i = 0;
+            for e in corners.iter().rev() {
+                r_corners[i] = e.clone();
+                i += 1;
+            }
+
+            r_corners
+        } else {
+            corners
+        }
+    }
+
     pub fn execute_move(&mut self, move_to_make: Move) {
         let edges = self.get_edge_idx_for_move(move_to_make.clone());
-        let corners = match move_to_make {
-            Move::U => [
-                get_idx(0, 2, 0),
-                get_idx(0, 2, 2),
-                get_idx(2, 2, 2),
-                get_idx(2, 2, 0),
-            ],
-            Move::UPrime => [
-                get_idx(0, 2, 2),
-                get_idx(0, 2, 0),
-                get_idx(2, 2, 0),
-                get_idx(2, 2, 2),
-            ],
-            Move::R => [
-                get_idx(2, 0, 2),
-                get_idx(2, 0, 0),
-                get_idx(2, 2, 0),
-                get_idx(2, 2, 2),
-            ],
-            Move::RPrime => [
-                get_idx(2, 0, 0),
-                get_idx(2, 0, 2),
-                get_idx(2, 2, 2),
-                get_idx(2, 2, 0),
-            ],
-            Move::F => [
-                get_idx(0, 2, 2),
-                get_idx(0, 0, 2),
-                get_idx(2, 0, 2),
-                get_idx(2, 2, 2),
-            ],
-            Move::FPrime => [
-                get_idx(0, 0, 2),
-                get_idx(0, 2, 2),
-                get_idx(2, 2, 2),
-                get_idx(2, 0, 2),
-            ],
-            Move::DPrime => [
-                get_idx(0, 0, 0),
-                get_idx(0, 0, 2),
-                get_idx(2, 0, 2),
-                get_idx(2, 0, 0),
-            ],
-            Move::D => [
-                get_idx(0, 0, 2),
-                get_idx(0, 0, 0),
-                get_idx(2, 0, 0),
-                get_idx(2, 0, 2),
-            ],
-            Move::LPrime => [
-                get_idx(0, 0, 2),
-                get_idx(0, 0, 0),
-                get_idx(0, 2, 0),
-                get_idx(0, 2, 2),
-            ],
-            Move::L => [
-                get_idx(0, 0, 0),
-                get_idx(0, 0, 2),
-                get_idx(0, 2, 2),
-                get_idx(0, 2, 0),
-            ],
-            Move::BPrime => [
-                get_idx(0, 2, 0),
-                get_idx(0, 0, 0),
-                get_idx(2, 0, 0),
-                get_idx(2, 2, 0),
-            ],
-            Move::B => [
-                get_idx(0, 0, 0),
-                get_idx(0, 2, 0),
-                get_idx(2, 2, 0),
-                get_idx(2, 0, 0),
-            ],
-            _ => panic!("This shouldn't be possible"),
-        };
+        let corners = self.get_corner_idx_for_move(move_to_make.clone());
 
         let rotation = match move_to_make {
             Move::U => Quat::from_rotation_y(-PI / 2.0),
