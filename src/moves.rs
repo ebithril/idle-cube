@@ -1,6 +1,7 @@
 use ::rand::distr::{Distribution, StandardUniform};
 use ::rand::Rng;
 use bitflags::bitflags;
+use macroquad::math::Quat;
 
 bitflags! {
     #[derive(Clone, Eq, PartialEq)]
@@ -22,8 +23,38 @@ bitflags! {
 }
 
 impl Move {
-    pub fn is_prime(self) -> bool {
-        (self & Self::Prime) == Self::Prime
+    pub fn is_prime(&self) -> bool {
+        (self.clone() & Self::Prime) == Self::Prime
+    }
+
+    pub fn get_prime_sign(&self) -> f32 {
+        if self.contains(Move::U) || self.contains(Move::R) || self.contains(Move::F) {
+            1.
+        } else if self.contains(Move::D) || self.contains(Move::L) || self.contains(Move::B) {
+            -1.
+        } else {
+            panic!("This should never happen");
+        }
+    }
+
+    pub fn get_sign(&self) -> f32 {
+        if self.is_prime() {
+            self.get_prime_sign()
+        } else {
+            -1. * self.get_prime_sign()
+        }
+    }
+
+    pub fn create_rotation(&self, angle: f32) -> Quat {
+        if self.contains(Move::U) || self.contains(Move::D) {
+            Quat::from_rotation_y(angle)
+        } else if self.contains(Move::R) || self.contains(Move::L) {
+            Quat::from_rotation_x(angle)
+        } else if self.contains(Move::F) || self.contains(Move::B) {
+            Quat::from_rotation_z(angle)
+        } else {
+            panic!("This should never happen");
+        }
     }
 }
 

@@ -232,88 +232,30 @@ impl Cube {
         }
     }
 
-    fn get_rotation_angle(&self, expected_move: Move, prime_sign: f32) -> Option<f32> {
+    fn get_rotation_angle(&self, expected_move: Move) -> Mat4 {
         let current_move = match self.alg.front() {
             Some(m) => m.clone(),
-            None => return None,
+            None => return Mat4::IDENTITY,
         };
 
         if !current_move.contains(expected_move) {
-            return None;
+            return Mat4::IDENTITY;
         }
 
-        let sign = if current_move.is_prime() {
-            prime_sign
-        } else {
-            -1. * prime_sign
-        };
+        let sign = current_move.get_sign();
 
         let rot_angle = (PI / 2.) * self.alg_time / self.move_time;
 
-        Some(rot_angle * sign)
-    }
-
-    fn get_r_rotation(&self) -> Mat4 {
-        let rot_angle = match self.get_rotation_angle(Move::R, 1.) {
-            Some(angle) => angle.clone(),
-            None => return Mat4::IDENTITY,
-        };
-
-        Mat4::from_quat(Quat::from_rotation_x(rot_angle))
-    }
-
-    fn get_u_rotation(&self) -> Mat4 {
-        let rot_angle = match self.get_rotation_angle(Move::U, 1.) {
-            Some(angle) => angle.clone(),
-            None => return Mat4::IDENTITY,
-        };
-
-        Mat4::from_quat(Quat::from_rotation_y(rot_angle))
-    }
-
-    fn get_f_rotation(&self) -> Mat4 {
-        let rot_angle = match self.get_rotation_angle(Move::F, 1.) {
-            Some(angle) => angle.clone(),
-            None => return Mat4::IDENTITY,
-        };
-
-        Mat4::from_quat(Quat::from_rotation_z(rot_angle))
-    }
-
-    fn get_l_rotation(&self) -> Mat4 {
-        let rot_angle = match self.get_rotation_angle(Move::L, -1.) {
-            Some(angle) => angle.clone(),
-            None => return Mat4::IDENTITY,
-        };
-
-        Mat4::from_quat(Quat::from_rotation_x(rot_angle))
-    }
-
-    fn get_d_rotation(&self) -> Mat4 {
-        let rot_angle = match self.get_rotation_angle(Move::D, -1.) {
-            Some(angle) => angle.clone(),
-            None => return Mat4::IDENTITY,
-        };
-
-        Mat4::from_quat(Quat::from_rotation_y(rot_angle))
-    }
-
-    fn get_b_rotation(&self) -> Mat4 {
-        let rot_angle = match self.get_rotation_angle(Move::B, -1.) {
-            Some(angle) => angle,
-            None => return Mat4::IDENTITY,
-        };
-
-        Mat4::from_quat(Quat::from_rotation_z(rot_angle))
+        Mat4::from_quat(current_move.create_rotation(rot_angle * sign))
     }
 
     pub fn get_side_rotation(&self) -> [[Mat4; 3]; 3] {
-        let r_rotation = self.get_r_rotation();
-        let u_rotation = self.get_u_rotation();
-        let f_rotation = self.get_f_rotation();
-        let l_rotation = self.get_l_rotation();
-        let d_rotation = self.get_d_rotation();
-        let b_rotation = self.get_b_rotation();
+        let r_rotation = self.get_rotation_angle(Move::R);
+        let u_rotation = self.get_rotation_angle(Move::U);
+        let f_rotation = self.get_rotation_angle(Move::F);
+        let l_rotation = self.get_rotation_angle(Move::L);
+        let d_rotation = self.get_rotation_angle(Move::D);
+        let b_rotation = self.get_rotation_angle(Move::B);
 
         [
             [l_rotation, Mat4::IDENTITY, r_rotation],
@@ -448,21 +390,8 @@ impl Cube {
         let edges = self.get_edge_idx_for_move(move_to_make.clone());
         let corners = self.get_corner_idx_for_move(move_to_make.clone());
 
-        let rotation = match move_to_make {
-            Move::U => Quat::from_rotation_y(-PI / 2.0),
-            Move::UPrime => Quat::from_rotation_y(PI / 2.0),
-            Move::R => Quat::from_rotation_x(-PI / 2.0),
-            Move::RPrime => Quat::from_rotation_x(PI / 2.0),
-            Move::F => Quat::from_rotation_z(-PI / 2.0),
-            Move::FPrime => Quat::from_rotation_z(PI / 2.0),
-            Move::DPrime => Quat::from_rotation_y(-PI / 2.0),
-            Move::D => Quat::from_rotation_y(PI / 2.0),
-            Move::LPrime => Quat::from_rotation_x(-PI / 2.0),
-            Move::L => Quat::from_rotation_x(PI / 2.0),
-            Move::BPrime => Quat::from_rotation_z(-PI / 2.0),
-            Move::B => Quat::from_rotation_z(PI / 2.0),
-            _ => panic!("This shouldn't be possible"),
-        };
+        let sign = move_to_make.get_sign();
+        let rotation = move_to_make.create_rotation((PI / 2.) * sign);
 
         let mut buffer = self.pieces[edges[0]].clone();
         buffer.rotation = rotation * buffer.rotation;
