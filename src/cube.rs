@@ -353,6 +353,46 @@ impl Cube {
         self.daisy_count() == 4
     }
 
+    pub fn white_cross_count(&self) -> usize {
+        const CROSS_POSITIONS: [(usize, usize, usize); 4] =
+            [(1, 2, 0), (0, 2, 1), (2, 2, 1), (1, 2, 2)];
+
+        CROSS_POSITIONS
+            .into_iter()
+            .filter(|&(x, y, z)| {
+                let position = get_idx(x, y, z);
+                let piece = &self.pieces[position];
+                piece.home_index == position
+                    && piece.orientation.transform(Direction::Up) == Direction::Up
+            })
+            .count()
+    }
+
+    pub fn is_white_cross_complete(&self) -> bool {
+        self.white_cross_count() == 4
+    }
+
+    pub(crate) fn white_edge_home_side_at(
+        &self,
+        x: usize,
+        y: usize,
+        z: usize,
+    ) -> Option<Direction> {
+        let piece = &self.pieces[get_idx(x, y, z)];
+        if !is_white_edge(piece) || piece.orientation.transform(Direction::Up) != Direction::Down {
+            return None;
+        }
+
+        let (home_x, _, home_z) = get_3d_index(piece.home_index);
+        match (home_x, home_z) {
+            (0, 1) => Some(Direction::Left),
+            (2, 1) => Some(Direction::Right),
+            (1, 0) => Some(Direction::Back),
+            (1, 2) => Some(Direction::Front),
+            _ => None,
+        }
+    }
+
     pub(crate) fn state_key(&self) -> Vec<(usize, Direction, Direction, Direction)> {
         self.pieces
             .iter()

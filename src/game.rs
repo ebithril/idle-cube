@@ -1,6 +1,6 @@
 use crate::cube::Cube;
 use crate::moves::random_scramble;
-use crate::solver::DaisySolver;
+use crate::solver::{DaisySolver, DaisyToCrossSolver};
 
 use macroquad::prelude::*;
 
@@ -68,8 +68,10 @@ impl Game {
             self.scramble_complete = true;
         }
 
-        if self.scramble_complete && self.cube.is_idle() && !self.cube.is_daisy_complete() {
-            if let Some(step) = DaisySolver::next_step(&self.cube) {
+        if self.scramble_complete && self.cube.is_idle() && !self.cube.is_white_cross_complete() {
+            if let Some(step) = DaisyToCrossSolver::next_step(&self.cube) {
+                self.cube.queue_moves(step);
+            } else if let Some(step) = DaisySolver::next_step(&self.cube) {
                 self.cube.queue_moves(step);
             }
         }
@@ -116,6 +118,13 @@ impl Game {
             &format!("DAISY: {}/4", self.cube.daisy_count()),
             10.0,
             60.0,
+            30.0,
+            WHITE,
+        );
+        draw_text(
+            &format!("CROSS: {}/4", self.cube.white_cross_count()),
+            10.0,
+            90.0,
             30.0,
             WHITE,
         );

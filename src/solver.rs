@@ -1,4 +1,4 @@
-use crate::cube::Cube;
+use crate::cube::{Cube, Direction};
 use crate::moves::Move;
 use std::collections::{HashSet, VecDeque};
 
@@ -65,6 +65,31 @@ impl DaisySolver {
     }
 }
 
+pub struct DaisyToCrossSolver;
+
+impl DaisyToCrossSolver {
+    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+        if cube.is_white_cross_complete() || cube.daisy_count() + cube.white_cross_count() != 4 {
+            return None;
+        }
+
+        const DAISY_POSITIONS: [(usize, usize, usize, Direction, Move); 4] = [
+            (1, 0, 0, Direction::Back, Move::B2),
+            (0, 0, 1, Direction::Left, Move::L2),
+            (2, 0, 1, Direction::Right, Move::R2),
+            (1, 0, 2, Direction::Front, Move::F2),
+        ];
+
+        for (x, y, z, position_side, insertion) in DAISY_POSITIONS {
+            if cube.white_edge_home_side_at(x, y, z) == Some(position_side) {
+                return Some(vec![insertion]);
+            }
+        }
+
+        Some(vec![Move::D])
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,6 +97,17 @@ mod tests {
     fn build_daisy(cube: &mut Cube) {
         while !cube.is_daisy_complete() {
             let step = DaisySolver::next_step(cube).expect("a daisy step should exist");
+            for move_to_make in step {
+                cube.execute_move(move_to_make);
+            }
+        }
+    }
+
+    fn build_cross(cube: &mut Cube) {
+        build_daisy(cube);
+        while !cube.is_white_cross_complete() {
+            let step =
+                DaisyToCrossSolver::next_step(cube).expect("a daisy-to-cross step should exist");
             for move_to_make in step {
                 cube.execute_move(move_to_make);
             }
@@ -117,6 +153,33 @@ mod tests {
                 cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
             }
             build_daisy(&mut cube);
+        }
+    }
+
+    #[test]
+    fn daisy_can_be_converted_to_a_cross() {
+        let mut cube = Cube::new();
+        for move_to_make in [Move::R, Move::U2, Move::FPrime, Move::L, Move::D2] {
+            cube.execute_move(move_to_make);
+        }
+
+        build_cross(&mut cube);
+        assert!(cube.is_white_cross_complete());
+    }
+
+    #[test]
+    fn many_deterministic_scrambles_can_build_a_cross() {
+        let mut random_state = 0x8765_4321_u32;
+
+        for _ in 0..100 {
+            let mut cube = Cube::new();
+            for _ in 0..20 {
+                random_state = random_state
+                    .wrapping_mul(1_664_525)
+                    .wrapping_add(1_013_904_223);
+                cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
+            }
+            build_cross(&mut cube);
         }
     }
 }
