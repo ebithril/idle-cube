@@ -155,6 +155,78 @@ impl FirstLayerCornerSolver {
     }
 }
 
+pub struct SecondLayerEdgeSolver;
+
+impl SecondLayerEdgeSolver {
+    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+        if !cube.is_first_layer_complete() || cube.is_second_layer_complete() {
+            return None;
+        }
+
+        let completed_edges = cube.second_layer_edge_count();
+        let edges_on_down = cube.second_layer_edges_on_down_count();
+        let mut ejection = None;
+
+        for setup in [vec![], vec![Move::D], vec![Move::DPrime], vec![Move::D2]] {
+            for insertion in second_layer_insertions() {
+                let algorithm: Vec<_> = setup.iter().chain(insertion.iter()).copied().collect();
+                let mut attempt = cube.clone();
+                for &move_to_make in &algorithm {
+                    attempt.execute_move(move_to_make);
+                }
+
+                if !attempt.is_first_layer_complete()
+                    || attempt.second_layer_edge_count() < completed_edges
+                {
+                    continue;
+                }
+                if attempt.second_layer_edge_count() > completed_edges {
+                    return Some(algorithm);
+                }
+                if attempt.second_layer_edges_on_down_count() > edges_on_down && ejection.is_none()
+                {
+                    ejection = Some(algorithm);
+                }
+            }
+        }
+
+        ejection
+    }
+}
+
+fn second_layer_insertions() -> Vec<Vec<Move>> {
+    let adjacent_faces = [
+        (Move::R, Move::F),
+        (Move::F, Move::L),
+        (Move::L, Move::B),
+        (Move::B, Move::R),
+    ];
+    let mut algorithms = Vec::new();
+
+    for (first, second) in adjacent_faces {
+        for (first, second) in [(first, second), (second, first)] {
+            for first in [first, first.inverse()] {
+                for second in [second, second.inverse()] {
+                    for down in [Move::D, Move::DPrime] {
+                        algorithms.push(vec![
+                            down,
+                            first,
+                            down.inverse(),
+                            first.inverse(),
+                            down.inverse(),
+                            second.inverse(),
+                            down,
+                            second,
+                        ]);
+                    }
+                }
+            }
+        }
+    }
+
+    algorithms
+}
+
 fn find_corner_extraction(
     cube: &Cube,
     target_corner: usize,
@@ -240,6 +312,20 @@ mod tests {
             assert!(attempts < 50, "corner solver stopped making progress");
             let step = FirstLayerCornerSolver::next_step(cube)
                 .expect("a first-layer corner step should exist");
+            for move_to_make in step {
+                cube.execute_move(move_to_make);
+            }
+        }
+    }
+
+    fn build_second_layer(cube: &mut Cube) {
+        build_first_layer(cube);
+        let mut attempts = 0;
+        while !cube.is_second_layer_complete() {
+            attempts += 1;
+            assert!(attempts < 20, "second-layer solver stopped making progress");
+            let step = SecondLayerEdgeSolver::next_step(cube)
+                .expect("a second-layer edge step should exist");
             for move_to_make in step {
                 cube.execute_move(move_to_make);
             }
@@ -346,6 +432,40 @@ mod tests {
                 cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
             }
             build_first_layer(&mut cube);
+        }
+    }
+
+    #[test]
+    fn scrambled_cube_can_complete_the_second_layer() {
+        let mut cube = Cube::new();
+        for move_to_make in [
+            Move::R,
+            Move::U2,
+            Move::FPrime,
+            Move::L,
+            Move::D2,
+            Move::BPrime,
+        ] {
+            cube.execute_move(move_to_make);
+        }
+
+        build_second_layer(&mut cube);
+        assert!(cube.is_second_layer_complete());
+    }
+
+    #[test]
+    fn deterministic_scrambles_can_complete_the_second_layer() {
+        let mut random_state = 0x0ddc_0ffe_u32;
+
+        for _ in 0..20 {
+            let mut cube = Cube::new();
+            for _ in 0..20 {
+                random_state = random_state
+                    .wrapping_mul(1_664_525)
+                    .wrapping_add(1_013_904_223);
+                cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
+            }
+            build_second_layer(&mut cube);
         }
     }
 }

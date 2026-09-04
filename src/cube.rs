@@ -390,6 +390,34 @@ impl Cube {
         self.is_white_cross_complete() && self.first_layer_corner_count() == 4
     }
 
+    pub fn second_layer_edge_count(&self) -> usize {
+        const EDGE_POSITIONS: [(usize, usize, usize); 4] =
+            [(0, 1, 0), (2, 1, 0), (0, 1, 2), (2, 1, 2)];
+
+        EDGE_POSITIONS
+            .into_iter()
+            .filter(|&(x, y, z)| {
+                let position = get_idx(x, y, z);
+                let piece = &self.pieces[position];
+                piece.home_index == position && piece.orientation == Orientation::IDENTITY
+            })
+            .count()
+    }
+
+    pub fn is_second_layer_complete(&self) -> bool {
+        self.is_first_layer_complete() && self.second_layer_edge_count() == 4
+    }
+
+    pub(crate) fn second_layer_edges_on_down_count(&self) -> usize {
+        self.pieces
+            .iter()
+            .enumerate()
+            .filter(|(position, piece)| {
+                is_second_layer_edge(piece) && get_3d_index(*position).1 == 0
+            })
+            .count()
+    }
+
     pub(crate) fn first_unsolved_layer_corner_sides(
         &self,
     ) -> Option<(usize, Direction, Direction)> {
@@ -705,6 +733,11 @@ impl Cube {
 fn is_white_edge(piece: &Piece) -> bool {
     let (x, y, z) = get_3d_index(piece.home_index);
     y == 2 && [x, y, z].into_iter().filter(|&axis| axis != 1).count() == 2
+}
+
+fn is_second_layer_edge(piece: &Piece) -> bool {
+    let (x, y, z) = get_3d_index(piece.home_index);
+    y == 1 && x != 1 && z != 1
 }
 
 fn get_idx(x: usize, y: usize, z: usize) -> usize {

@@ -41,7 +41,7 @@
 
 - [x] Convert the daisy into the white cross.
 - [x] Insert first-layer corners.
-- [ ] Insert second-layer edges.
+- [x] Insert second-layer edges.
 - [ ] Build the last-layer cross.
 - [ ] Complete the remaining beginner-method last-layer steps.
 - [ ] Test that the fallback repertoire solves many deterministic scrambles.

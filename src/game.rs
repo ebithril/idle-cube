@@ -1,6 +1,8 @@
 use crate::cube::Cube;
 use crate::moves::random_scramble;
-use crate::solver::{DaisySolver, DaisyToCrossSolver, FirstLayerCornerSolver};
+use crate::solver::{
+    DaisySolver, DaisyToCrossSolver, FirstLayerCornerSolver, SecondLayerEdgeSolver,
+};
 
 use macroquad::prelude::*;
 
@@ -68,8 +70,10 @@ impl Game {
             self.scramble_complete = true;
         }
 
-        if self.scramble_complete && self.cube.is_idle() && !self.cube.is_first_layer_complete() {
-            if let Some(step) = FirstLayerCornerSolver::next_step(&self.cube) {
+        if self.scramble_complete && self.cube.is_idle() && !self.cube.is_second_layer_complete() {
+            if let Some(step) = SecondLayerEdgeSolver::next_step(&self.cube) {
+                self.cube.queue_moves(step);
+            } else if let Some(step) = FirstLayerCornerSolver::next_step(&self.cube) {
                 self.cube.queue_moves(step);
             } else if let Some(step) = DaisyToCrossSolver::next_step(&self.cube) {
                 self.cube.queue_moves(step);
@@ -134,6 +138,13 @@ impl Game {
             &format!("CORNERS: {}/4", self.cube.first_layer_corner_count()),
             10.0,
             120.0,
+            30.0,
+            WHITE,
+        );
+        draw_text(
+            &format!("SECOND LAYER: {}/4", self.cube.second_layer_edge_count()),
+            10.0,
+            150.0,
             30.0,
             WHITE,
         );
