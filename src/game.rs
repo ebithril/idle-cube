@@ -1,5 +1,5 @@
 use crate::cube::Cube;
-use crate::moves::Move;
+use crate::moves::random_scramble;
 use crate::solver::DaisySolver;
 
 use macroquad::prelude::*;
@@ -20,10 +20,8 @@ impl Game {
     pub fn new() -> Self {
         let mut cube = Cube::new();
 
-        for _ in 0..20 {
-            let move_to_make: Move = ::rand::random();
-            cube.queue_move(move_to_make);
-        }
+        let mut rng = ::rand::rng();
+        cube.queue_moves(random_scramble(&mut rng, 20));
 
         let material = load_material(
             ShaderSource::Glsl {

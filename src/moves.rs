@@ -18,6 +18,13 @@ bitflags! {
         const LPrime = 0b10010000;
         const B = 0b00100000;
         const BPrime = 0b10100000;
+        const U2 = 0b01000001;
+        const R2 = 0b01000010;
+        const F2 = 0b01000100;
+        const D2 = 0b01001000;
+        const L2 = 0b01010000;
+        const B2 = 0b01100000;
+        const Double = 0b01000000;
         const Prime = 0b10000000;
     }
 }
@@ -49,12 +56,37 @@ impl Move {
         self.get_sign() as i8
     }
 
+    pub fn is_double(&self) -> bool {
+        self.contains(Self::Double)
+    }
+
+    pub fn get_angle(&self) -> f32 {
+        if self.is_double() {
+            std::f32::consts::PI
+        } else {
+            std::f32::consts::FRAC_PI_2
+        }
+    }
+
     pub fn inverse(&self) -> Self {
-        if self.is_prime() {
+        if self.is_double() {
+            *self
+        } else if self.is_prime() {
             *self & !Self::Prime
         } else {
             *self | Self::Prime
         }
+    }
+
+    pub fn same_face(&self, other: Self) -> bool {
+        const FACES: Move = Move::U
+            .union(Move::R)
+            .union(Move::F)
+            .union(Move::D)
+            .union(Move::L)
+            .union(Move::B);
+
+        (*self & FACES) == (other & FACES)
     }
 
     pub fn create_rotation(&self, angle: f32) -> Quat {
@@ -72,7 +104,7 @@ impl Move {
 
 impl Distribution<Move> for StandardUniform {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Move {
-        match rng.random_range(0..12) {
+        match rng.random_range(0..18) {
             0 => Move::U,
             1 => Move::UPrime,
             2 => Move::R,
@@ -84,7 +116,49 @@ impl Distribution<Move> for StandardUniform {
             8 => Move::L,
             9 => Move::LPrime,
             10 => Move::B,
-            _ => Move::BPrime,
+            11 => Move::BPrime,
+            12 => Move::U2,
+            13 => Move::R2,
+            14 => Move::F2,
+            15 => Move::D2,
+            16 => Move::L2,
+            _ => Move::B2,
+        }
+    }
+}
+
+pub fn random_scramble<R: Rng + ?Sized>(rng: &mut R, length: usize) -> Vec<Move> {
+    let mut scramble = Vec::with_capacity(length);
+
+    while scramble.len() < length {
+        let next_move: Move = rng.random();
+        if scramble
+            .last()
+            .is_none_or(|previous: &Move| !previous.same_face(next_move))
+        {
+            scramble.push(next_move);
+        }
+    }
+
+    scramble
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ::rand::rngs::StdRng;
+    use ::rand::SeedableRng;
+
+    #[test]
+    fn scrambles_never_repeat_a_face() {
+        let mut rng = StdRng::seed_from_u64(0x5eed);
+
+        for _ in 0..100 {
+            let scramble = random_scramble(&mut rng, 20);
+            assert_eq!(scramble.len(), 20);
+            assert!(scramble
+                .windows(2)
+                .all(|moves| !moves[0].same_face(moves[1])));
         }
     }
 }

@@ -1,7 +1,6 @@
 use crate::moves::Move;
 use macroquad::prelude::*;
 use std::collections::VecDeque;
-use std::f32::consts::PI;
 
 const UP_NORMAL: Vec3 = vec3(0., 1., 0.);
 const RIGHT_NORMAL: Vec3 = vec3(1., 0., 0.);
@@ -78,6 +77,11 @@ impl Orientation {
     };
 
     fn rotate(self, move_to_make: Move) -> Self {
+        if move_to_make.is_double() {
+            let quarter_turn = move_to_make & !Move::Double;
+            return self.rotate(quarter_turn).rotate(quarter_turn);
+        }
+
         let sign = move_to_make.get_quarter_turn_sign();
         let rotate_direction = |direction: Direction| {
             if move_to_make.intersects(Move::U | Move::D) {
@@ -323,10 +327,6 @@ impl Cube {
         }
     }
 
-    pub fn queue_move(&mut self, move_to_make: Move) {
-        self.alg.push_back(move_to_make);
-    }
-
     pub fn queue_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
         self.alg.extend(moves);
     }
@@ -407,7 +407,7 @@ impl Cube {
 
         let sign = current_move.get_sign();
 
-        let rot_angle = (PI / 2.) * self.alg_time / self.move_time;
+        let rot_angle = current_move.get_angle() * self.alg_time / self.move_time;
 
         Mat4::from_quat(current_move.create_rotation(rot_angle * sign))
     }
@@ -546,6 +546,13 @@ impl Cube {
     }
 
     pub fn execute_move(&mut self, move_to_make: Move) {
+        if move_to_make.is_double() {
+            let quarter_turn = move_to_make & !Move::Double;
+            self.execute_move(quarter_turn);
+            self.execute_move(quarter_turn);
+            return;
+        }
+
         let edges = self.get_edge_idx_for_move(move_to_make);
         let corners = self.get_corner_idx_for_move(move_to_make);
 
@@ -860,7 +867,7 @@ fn add_piece_verticies(
 mod tests {
     use super::*;
 
-    const MOVES: [Move; 12] = [
+    const MOVES: [Move; 18] = [
         Move::U,
         Move::UPrime,
         Move::R,
@@ -873,6 +880,12 @@ mod tests {
         Move::LPrime,
         Move::B,
         Move::BPrime,
+        Move::U2,
+        Move::R2,
+        Move::F2,
+        Move::D2,
+        Move::L2,
+        Move::B2,
     ];
 
     #[test]
@@ -930,7 +943,8 @@ mod tests {
     fn exact_orientation_matches_move_quaternion() {
         for move_to_make in MOVES {
             let exact = Orientation::IDENTITY.rotate(move_to_make).to_quat();
-            let expected = move_to_make.create_rotation((PI / 2.) * move_to_make.get_sign());
+            let expected =
+                move_to_make.create_rotation(move_to_make.get_angle() * move_to_make.get_sign());
 
             for axis in [RIGHT_NORMAL, UP_NORMAL, FRONT_NORMAL] {
                 assert!(

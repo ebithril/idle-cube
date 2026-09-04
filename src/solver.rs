@@ -2,7 +2,7 @@ use crate::cube::Cube;
 use crate::moves::Move;
 use std::collections::{HashSet, VecDeque};
 
-const MOVES: [Move; 12] = [
+const MOVES: [Move; 18] = [
     Move::U,
     Move::UPrime,
     Move::R,
@@ -15,6 +15,12 @@ const MOVES: [Move; 12] = [
     Move::LPrime,
     Move::B,
     Move::BPrime,
+    Move::U2,
+    Move::R2,
+    Move::F2,
+    Move::D2,
+    Move::L2,
+    Move::B2,
 ];
 
 const MAX_DAISY_STEP_LENGTH: usize = 5;

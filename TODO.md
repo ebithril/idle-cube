@@ -58,7 +58,7 @@
 
 ## Later
 
-- [ ] Improve scramble generation and avoid immediate cancellations or redundant turns.
+- [x] Improve scramble generation and avoid immediate cancellations or redundant turns.
 - [ ] Animate the whole-cube rotation into the white-down solving orientation.
 - [ ] Add cube and camera controls without changing the logical cube state.
 - [ ] Replace the placeholder README with accurate project and gameplay documentation.
