@@ -10,6 +10,102 @@ const FRONT_NORMAL: Vec3 = vec3(0., 0., 1.);
 const XMAX: usize = 3;
 const YMAX: usize = 3;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+    Front,
+    Back,
+}
+
+impl Direction {
+    fn to_vec3(self) -> Vec3 {
+        match self {
+            Self::Up => UP_NORMAL,
+            Self::Down => -UP_NORMAL,
+            Self::Left => -RIGHT_NORMAL,
+            Self::Right => RIGHT_NORMAL,
+            Self::Front => FRONT_NORMAL,
+            Self::Back => -FRONT_NORMAL,
+        }
+    }
+
+    fn rotate_x(self, sign: i8) -> Self {
+        match (self, sign) {
+            (Self::Up, 1) | (Self::Down, -1) => Self::Front,
+            (Self::Front, 1) | (Self::Back, -1) => Self::Down,
+            (Self::Down, 1) | (Self::Up, -1) => Self::Back,
+            (Self::Back, 1) | (Self::Front, -1) => Self::Up,
+            _ => self,
+        }
+    }
+
+    fn rotate_y(self, sign: i8) -> Self {
+        match (self, sign) {
+            (Self::Front, 1) | (Self::Back, -1) => Self::Right,
+            (Self::Right, 1) | (Self::Left, -1) => Self::Back,
+            (Self::Back, 1) | (Self::Front, -1) => Self::Left,
+            (Self::Left, 1) | (Self::Right, -1) => Self::Front,
+            _ => self,
+        }
+    }
+
+    fn rotate_z(self, sign: i8) -> Self {
+        match (self, sign) {
+            (Self::Right, 1) | (Self::Left, -1) => Self::Up,
+            (Self::Up, 1) | (Self::Down, -1) => Self::Left,
+            (Self::Left, 1) | (Self::Right, -1) => Self::Down,
+            (Self::Down, 1) | (Self::Up, -1) => Self::Right,
+            _ => self,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct Orientation {
+    right: Direction,
+    up: Direction,
+    front: Direction,
+}
+
+impl Orientation {
+    const IDENTITY: Self = Self {
+        right: Direction::Right,
+        up: Direction::Up,
+        front: Direction::Front,
+    };
+
+    fn rotate(self, move_to_make: Move) -> Self {
+        let sign = move_to_make.get_quarter_turn_sign();
+        let rotate_direction = |direction: Direction| {
+            if move_to_make.intersects(Move::U | Move::D) {
+                direction.rotate_y(sign)
+            } else if move_to_make.intersects(Move::R | Move::L) {
+                direction.rotate_x(sign)
+            } else {
+                direction.rotate_z(sign)
+            }
+        };
+
+        Self {
+            right: rotate_direction(self.right),
+            up: rotate_direction(self.up),
+            front: rotate_direction(self.front),
+        }
+    }
+
+    fn to_quat(self) -> Quat {
+        let rotation = Mat3::from_cols(
+            self.right.to_vec3(),
+            self.up.to_vec3(),
+            self.front.to_vec3(),
+        );
+        Quat::from_mat3(&rotation)
+    }
+}
+
 #[derive(Clone)]
 struct PieceColor {
     front: Color,
@@ -35,8 +131,9 @@ impl Default for PieceColor {
 
 #[derive(Clone)]
 struct Piece {
+    home_index: usize,
     color: PieceColor,
-    rotation: Quat,
+    orientation: Orientation,
 }
 
 pub struct Cube {
@@ -185,10 +282,11 @@ impl Cube {
 
         let mut pieces: Vec<Piece> = Vec::new();
 
-        for color in piece_colors {
+        for (home_index, color) in piece_colors.into_iter().enumerate() {
             pieces.push(Piece {
+                home_index,
                 color,
-                rotation: Quat::IDENTITY,
+                orientation: Orientation::IDENTITY,
             });
         }
 
@@ -209,7 +307,7 @@ impl Cube {
         let mut indices = Vec::<u16>::new();
 
         for (i, piece) in self.pieces.iter().enumerate() {
-            add_piece_verticies(&mut vertices, &mut indices, i, &piece, 1.0);
+            add_piece_verticies(&mut vertices, &mut indices, i, piece, 1.0);
         }
 
         Mesh {
@@ -228,13 +326,13 @@ impl Cube {
         if self.alg_time > self.move_time {
             self.alg_time = 0.;
             let current_move = self.alg.pop_front();
-            self.execute_move(current_move.unwrap().clone());
+            self.execute_move(current_move.unwrap());
         }
     }
 
     fn get_rotation_angle(&self, expected_move: Move) -> Mat4 {
         let current_move = match self.alg.front() {
-            Some(m) => m.clone(),
+            Some(m) => *m,
             None => return Mat4::IDENTITY,
         };
 
@@ -313,10 +411,8 @@ impl Cube {
 
         if move_to_make.is_prime() {
             let mut r_edges: [usize; 4] = [0, 0, 0, 0];
-            let mut i = 0;
-            for e in edges.iter().rev() {
-                r_edges[i] = e.clone();
-                i += 1;
+            for (i, e) in edges.iter().rev().enumerate() {
+                r_edges[i] = *e;
             }
 
             r_edges
@@ -374,10 +470,8 @@ impl Cube {
 
         if move_to_make.is_prime() {
             let mut r_corners: [usize; 4] = [0, 0, 0, 0];
-            let mut i = 0;
-            for e in corners.iter().rev() {
-                r_corners[i] = e.clone();
-                i += 1;
+            for (i, e) in corners.iter().rev().enumerate() {
+                r_corners[i] = *e;
             }
 
             r_corners
@@ -387,37 +481,32 @@ impl Cube {
     }
 
     pub fn execute_move(&mut self, move_to_make: Move) {
-        let edges = self.get_edge_idx_for_move(move_to_make.clone());
-        let corners = self.get_corner_idx_for_move(move_to_make.clone());
-
-        let sign = move_to_make.get_sign();
-        let rotation = move_to_make.create_rotation((PI / 2.) * sign);
+        let edges = self.get_edge_idx_for_move(move_to_make);
+        let corners = self.get_corner_idx_for_move(move_to_make);
 
         let mut buffer = self.pieces[edges[0]].clone();
-        buffer.rotation = rotation * buffer.rotation;
+        buffer.orientation = buffer.orientation.rotate(move_to_make);
         for i in 0..edges.len() - 1 {
             self.pieces[edges[i]] = self.pieces[edges[i + 1]].clone();
-            self.pieces[edges[i]].rotation = rotation * self.pieces[edges[i]].rotation;
+            self.pieces[edges[i]].orientation =
+                self.pieces[edges[i]].orientation.rotate(move_to_make);
         }
         self.pieces[edges[3]] = buffer;
 
         let mut buffer = self.pieces[corners[0]].clone();
-        buffer.rotation = rotation * buffer.rotation;
+        buffer.orientation = buffer.orientation.rotate(move_to_make);
         for i in 0..corners.len() - 1 {
             self.pieces[corners[i]] = self.pieces[corners[i + 1]].clone();
-            self.pieces[corners[i]].rotation = rotation * self.pieces[corners[i]].rotation;
+            self.pieces[corners[i]].orientation =
+                self.pieces[corners[i]].orientation.rotate(move_to_make);
         }
         self.pieces[corners[3]] = buffer;
     }
 
     pub fn is_solved(&self) -> bool {
-        for piece in &self.pieces {
-            if !piece.rotation.is_near_identity() {
-                return false;
-            }
-        }
-
-        true
+        self.pieces.iter().enumerate().all(|(position, piece)| {
+            piece.home_index == position && piece.orientation == Orientation::IDENTITY
+        })
     }
 }
 
@@ -468,51 +557,44 @@ fn add_piece_verticies(
 ) {
     let piece_center = get_piece_position(piece_index, size);
     let piece_color = &piece.color;
+    let piece_rotation = piece.orientation.to_quat();
     let index_offset = vertices.len() as u16;
     let piece_size = size / 3.0;
     let float_index = piece_index as f32 + 0.5;
 
-    let front_normal = piece.rotation.mul_vec3(FRONT_NORMAL);
-    let back_normal = piece.rotation.mul_vec3(-FRONT_NORMAL);
-    let right_normal = piece.rotation.mul_vec3(RIGHT_NORMAL);
-    let left_normal = piece.rotation.mul_vec3(-RIGHT_NORMAL);
-    let up_normal = piece.rotation.mul_vec3(UP_NORMAL);
-    let down_normal = piece.rotation.mul_vec3(-UP_NORMAL);
+    let front_normal = piece_rotation.mul_vec3(FRONT_NORMAL);
+    let back_normal = piece_rotation.mul_vec3(-FRONT_NORMAL);
+    let right_normal = piece_rotation.mul_vec3(RIGHT_NORMAL);
+    let left_normal = piece_rotation.mul_vec3(-RIGHT_NORMAL);
+    let up_normal = piece_rotation.mul_vec3(UP_NORMAL);
+    let down_normal = piece_rotation.mul_vec3(-UP_NORMAL);
 
     vertices.extend([
         // Front face
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, -piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, -piece_size, piece_size)),
             uv: vec2(0., 0.),
             color: piece_color.front.into(),
             normal: Vec4::new(front_normal.x, front_normal.y, front_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, piece_size, piece_size)),
             uv: vec2(1., 0.),
             color: piece_color.front.into(),
             normal: Vec4::new(front_normal.x, front_normal.y, front_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, piece_size, piece_size)),
             uv: vec2(1., 1.),
             color: piece_color.front.into(),
             normal: Vec4::new(front_normal.x, front_normal.y, front_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, -piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, -piece_size, piece_size)),
             uv: vec2(0., 1.),
             color: piece_color.front.into(),
             normal: Vec4::new(front_normal.x, front_normal.y, front_normal.z, float_index),
@@ -520,36 +602,28 @@ fn add_piece_verticies(
         // Back face
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, -piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, -piece_size, -piece_size)),
             uv: vec2(0., 0.),
             color: piece_color.back.into(),
             normal: Vec4::new(back_normal.x, back_normal.y, back_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, -piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, -piece_size, -piece_size)),
             uv: vec2(1., 0.),
             color: piece_color.back.into(),
             normal: Vec4::new(back_normal.x, back_normal.y, back_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, piece_size, -piece_size)),
             uv: vec2(1., 1.),
             color: piece_color.back.into(),
             normal: Vec4::new(back_normal.x, back_normal.y, back_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, piece_size, -piece_size)),
             uv: vec2(0., 1.),
             color: piece_color.back.into(),
             normal: Vec4::new(back_normal.x, back_normal.y, back_normal.z, float_index),
@@ -557,36 +631,28 @@ fn add_piece_verticies(
         // Top face
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, piece_size, -piece_size)),
             uv: vec2(0., 0.),
             color: piece_color.up.into(),
             normal: Vec4::new(up_normal.x, up_normal.y, up_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, piece_size, piece_size)),
             uv: vec2(1., 0.),
             color: piece_color.up.into(),
             normal: Vec4::new(up_normal.x, up_normal.y, up_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, piece_size, piece_size)),
             uv: vec2(1., 1.),
             color: piece_color.up.into(),
             normal: Vec4::new(up_normal.x, up_normal.y, up_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, piece_size, -piece_size)),
             uv: vec2(0., 1.),
             color: piece_color.up.into(),
             normal: Vec4::new(up_normal.x, up_normal.y, up_normal.z, float_index),
@@ -594,36 +660,28 @@ fn add_piece_verticies(
         // Bottom face
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, -piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, -piece_size, -piece_size)),
             uv: vec2(0., 0.),
             color: piece_color.down.into(),
             normal: Vec4::new(down_normal.x, down_normal.y, down_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, -piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, -piece_size, -piece_size)),
             uv: vec2(1., 0.),
             color: piece_color.down.into(),
             normal: Vec4::new(down_normal.x, down_normal.y, down_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, -piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, -piece_size, piece_size)),
             uv: vec2(1., 1.),
             color: piece_color.down.into(),
             normal: Vec4::new(down_normal.x, down_normal.y, down_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, -piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, -piece_size, piece_size)),
             uv: vec2(0., 1.),
             color: piece_color.down.into(),
             normal: Vec4::new(down_normal.x, down_normal.y, down_normal.z, float_index),
@@ -631,36 +689,28 @@ fn add_piece_verticies(
         // Right face
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, -piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, -piece_size, -piece_size)),
             uv: vec2(0., 0.),
             color: piece_color.right.into(),
             normal: Vec4::new(right_normal.x, right_normal.y, right_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, piece_size, -piece_size)),
             uv: vec2(1., 0.),
             color: piece_color.right.into(),
             normal: Vec4::new(right_normal.x, right_normal.y, right_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, piece_size, piece_size)),
             uv: vec2(1., 1.),
             color: piece_color.right.into(),
             normal: Vec4::new(right_normal.x, right_normal.y, right_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(piece_size, -piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(piece_size, -piece_size, piece_size)),
             uv: vec2(0., 1.),
             color: piece_color.right.into(),
             normal: Vec4::new(right_normal.x, right_normal.y, right_normal.z, float_index),
@@ -668,36 +718,28 @@ fn add_piece_verticies(
         // Left face
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, -piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, -piece_size, -piece_size)),
             uv: vec2(0., 0.),
             color: piece_color.left.into(),
             normal: Vec4::new(left_normal.x, left_normal.y, left_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, -piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, -piece_size, piece_size)),
             uv: vec2(1., 0.),
             color: piece_color.left.into(),
             normal: Vec4::new(left_normal.x, left_normal.y, left_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, piece_size, piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, piece_size, piece_size)),
             uv: vec2(1., 1.),
             color: piece_color.left.into(),
             normal: Vec4::new(left_normal.x, left_normal.y, left_normal.z, float_index),
         },
         Vertex {
             position: piece_center
-                + piece
-                    .rotation
-                    .mul_vec3(vec3(-piece_size, piece_size, -piece_size)),
+                + piece_rotation.mul_vec3(vec3(-piece_size, piece_size, -piece_size)),
             uv: vec2(0., 1.),
             color: piece_color.left.into(),
             normal: Vec4::new(left_normal.x, left_normal.y, left_normal.z, float_index),
@@ -705,10 +747,10 @@ fn add_piece_verticies(
     ]);
 
     indices.extend([
-        0 + index_offset,
+        index_offset,
         1 + index_offset,
         2 + index_offset,
-        0 + index_offset,
+        index_offset,
         2 + index_offset,
         3 + index_offset, // front
         4 + index_offset,
@@ -742,4 +784,92 @@ fn add_piece_verticies(
         22 + index_offset,
         23 + index_offset, // left
     ]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const MOVES: [Move; 12] = [
+        Move::U,
+        Move::UPrime,
+        Move::R,
+        Move::RPrime,
+        Move::F,
+        Move::FPrime,
+        Move::D,
+        Move::DPrime,
+        Move::L,
+        Move::LPrime,
+        Move::B,
+        Move::BPrime,
+    ];
+
+    #[test]
+    fn new_cube_is_solved() {
+        assert!(Cube::new().is_solved());
+    }
+
+    #[test]
+    fn a_single_move_is_not_solved() {
+        for move_to_make in MOVES {
+            let mut cube = Cube::new();
+            cube.execute_move(move_to_make);
+            assert!(!cube.is_solved(), "{move_to_make:?}");
+        }
+    }
+
+    #[test]
+    fn a_move_followed_by_its_inverse_restores_the_cube() {
+        for move_to_make in MOVES {
+            let mut cube = Cube::new();
+            cube.execute_move(move_to_make);
+            cube.execute_move(move_to_make.inverse());
+            assert!(cube.is_solved(), "{move_to_make:?}");
+        }
+    }
+
+    #[test]
+    fn four_quarter_turns_restore_the_cube() {
+        for move_to_make in MOVES {
+            let mut cube = Cube::new();
+            for _ in 0..4 {
+                cube.execute_move(move_to_make);
+            }
+            assert!(cube.is_solved(), "{move_to_make:?}");
+        }
+    }
+
+    #[test]
+    fn an_algorithm_followed_by_its_inverse_restores_the_cube() {
+        let algorithm = [Move::R, Move::U, Move::RPrime, Move::UPrime, Move::F];
+        let mut cube = Cube::new();
+
+        for move_to_make in algorithm {
+            cube.execute_move(move_to_make);
+        }
+        assert!(!cube.is_solved());
+
+        for move_to_make in algorithm.into_iter().rev() {
+            cube.execute_move(move_to_make.inverse());
+        }
+        assert!(cube.is_solved());
+    }
+
+    #[test]
+    fn exact_orientation_matches_move_quaternion() {
+        for move_to_make in MOVES {
+            let exact = Orientation::IDENTITY.rotate(move_to_make).to_quat();
+            let expected = move_to_make.create_rotation((PI / 2.) * move_to_make.get_sign());
+
+            for axis in [RIGHT_NORMAL, UP_NORMAL, FRONT_NORMAL] {
+                assert!(
+                    exact
+                        .mul_vec3(axis)
+                        .abs_diff_eq(expected.mul_vec3(axis), 0.000_001),
+                    "{move_to_make:?}"
+                );
+            }
+        }
+    }
 }

@@ -2,22 +2,22 @@
 
 ## 1. Exact cube state
 
-- [ ] Give every cubie an explicit, stable identity.
-- [ ] Replace committed floating-point cubie rotations with an exact discrete orientation.
-- [ ] Derive rendering quaternions from the exact orientation.
-- [ ] Keep move animation separate from committed cube state.
+- [x] Give every cubie an explicit, stable identity.
+- [x] Replace committed floating-point cubie rotations with an exact discrete orientation.
+- [x] Derive rendering quaternions from the exact orientation.
+- [x] Keep move animation separate from committed cube state.
 - [ ] Add queries for locating cubies and determining which direction each sticker faces.
-- [ ] Make solved-state detection use the exact cube state.
-- [ ] Preserve the existing move bitflags and prime-move handling.
+- [x] Make solved-state detection use the exact cube state.
+- [x] Preserve the existing move bitflags and prime-move handling.
 
 ### Cube-state tests
 
-- [ ] A new cube is solved.
-- [ ] Every move followed by its inverse restores the cube.
-- [ ] Applying any face move four times restores the cube.
-- [ ] A non-trivial scramble is not solved.
-- [ ] A scramble followed by its inverse restores the cube.
-- [ ] Rendering orientation agrees with logical orientation after moves.
+- [x] A new cube is solved.
+- [x] Every move followed by its inverse restores the cube.
+- [x] Applying any face move four times restores the cube.
+- [x] A non-trivial scramble is not solved.
+- [x] A scramble followed by its inverse restores the cube.
+- [x] Rendering orientation agrees with logical orientation after moves.
 
 ## 2. Solving framework
 

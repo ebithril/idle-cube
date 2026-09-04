@@ -4,7 +4,7 @@ use bitflags::bitflags;
 use macroquad::math::Quat;
 
 bitflags! {
-    #[derive(Clone, Eq, PartialEq)]
+    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct Move : u32 {
         const U = 0b00000001;
         const UPrime = 0b10000001;
@@ -24,7 +24,7 @@ bitflags! {
 
 impl Move {
     pub fn is_prime(&self) -> bool {
-        (self.clone() & Self::Prime) == Self::Prime
+        (*self & Self::Prime) == Self::Prime
     }
 
     pub fn get_prime_sign(&self) -> f32 {
@@ -41,7 +41,19 @@ impl Move {
         if self.is_prime() {
             self.get_prime_sign()
         } else {
-            -1. * self.get_prime_sign()
+            -self.get_prime_sign()
+        }
+    }
+
+    pub fn get_quarter_turn_sign(&self) -> i8 {
+        self.get_sign() as i8
+    }
+
+    pub fn inverse(&self) -> Self {
+        if self.is_prime() {
+            *self & !Self::Prime
+        } else {
+            *self | Self::Prime
         }
     }
 
