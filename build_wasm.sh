@@ -15,7 +15,7 @@ if [ $? -eq 0 ]; then
     sleep 1
 
     # Copy WASM file to root directory
-    cp target/wasm32-unknown-unknown/release/idle_cube.wasm .
+    cp target/wasm32-unknown-unknown/release/idle-cube.wasm idle_cube.wasm
 
     echo "WASM file copied to current directory"
     echo ""
