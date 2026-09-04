@@ -12,6 +12,7 @@ varying lowp vec3 vert_pos;
 
 uniform mat4 Model;
 uniform mat4 Projection;
+uniform mat4 CubeRotation;
 uniform mat4 XRotation[3];
 uniform mat4 YRotation[3];
 uniform mat4 ZRotation[3];
@@ -38,11 +39,10 @@ void main() {
     ivec3 layer_idx = get_3d_index(index);
     mat4 AnimMat = XRotation[layer_idx.x] * YRotation[layer_idx.y] * ZRotation[layer_idx.z];
 
-    vec4 pos =  AnimMat * vec4(position, 1);
+    vec4 pos = CubeRotation * AnimMat * vec4(position, 1);
     vert_pos = pos.xyz;
     gl_Position = Projection * pos;
     color = color0 / 255.0;
-    vert_normal = (AnimMat * normal).xyz;
+    vert_normal = (CubeRotation * AnimMat * normal).xyz;
     uv = texcoord;
 }
-

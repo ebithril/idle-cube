@@ -10,7 +10,7 @@ const FRONT_NORMAL: Vec3 = vec3(0., 0., 1.);
 const XMAX: usize = 3;
 const YMAX: usize = 3;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Direction {
     Up,
     Down,
@@ -104,6 +104,30 @@ impl Orientation {
         );
         Quat::from_mat3(&rotation)
     }
+
+    fn transform(self, direction: Direction) -> Direction {
+        match direction {
+            Direction::Right => self.right,
+            Direction::Left => self.right.opposite(),
+            Direction::Up => self.up,
+            Direction::Down => self.up.opposite(),
+            Direction::Front => self.front,
+            Direction::Back => self.front.opposite(),
+        }
+    }
+}
+
+impl Direction {
+    fn opposite(self) -> Self {
+        match self {
+            Self::Up => Self::Down,
+            Self::Down => Self::Up,
+            Self::Left => Self::Right,
+            Self::Right => Self::Left,
+            Self::Front => Self::Back,
+            Self::Back => Self::Front,
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -136,6 +160,7 @@ struct Piece {
     orientation: Orientation,
 }
 
+#[derive(Clone)]
 pub struct Cube {
     pieces: Vec<Piece>,
     alg: VecDeque<Move>,
@@ -300,6 +325,46 @@ impl Cube {
 
     pub fn queue_move(&mut self, move_to_make: Move) {
         self.alg.push_back(move_to_make);
+    }
+
+    pub fn queue_moves(&mut self, moves: impl IntoIterator<Item = Move>) {
+        self.alg.extend(moves);
+    }
+
+    pub fn is_idle(&self) -> bool {
+        self.alg.is_empty()
+    }
+
+    pub fn daisy_count(&self) -> usize {
+        const DAISY_POSITIONS: [(usize, usize, usize); 4] =
+            [(1, 0, 0), (0, 0, 1), (2, 0, 1), (1, 0, 2)];
+
+        DAISY_POSITIONS
+            .into_iter()
+            .filter(|&(x, y, z)| {
+                let piece = &self.pieces[get_idx(x, y, z)];
+                is_white_edge(piece)
+                    && piece.orientation.transform(Direction::Up) == Direction::Down
+            })
+            .count()
+    }
+
+    pub fn is_daisy_complete(&self) -> bool {
+        self.daisy_count() == 4
+    }
+
+    pub(crate) fn state_key(&self) -> Vec<(usize, Direction, Direction, Direction)> {
+        self.pieces
+            .iter()
+            .map(|piece| {
+                (
+                    piece.home_index,
+                    piece.orientation.right,
+                    piece.orientation.up,
+                    piece.orientation.front,
+                )
+            })
+            .collect()
     }
 
     pub fn create_mesh(&self) -> Mesh {
@@ -508,6 +573,11 @@ impl Cube {
             piece.home_index == position && piece.orientation == Orientation::IDENTITY
         })
     }
+}
+
+fn is_white_edge(piece: &Piece) -> bool {
+    let (x, y, z) = get_3d_index(piece.home_index);
+    y == 2 && [x, y, z].into_iter().filter(|&axis| axis != 1).count() == 2
 }
 
 fn get_idx(x: usize, y: usize, z: usize) -> usize {

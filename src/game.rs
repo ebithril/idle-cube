@@ -1,5 +1,6 @@
 use crate::cube::Cube;
 use crate::moves::Move;
+use crate::solver::DaisySolver;
 
 use macroquad::prelude::*;
 
@@ -12,6 +13,7 @@ const VERTEX_SHADER: &str = include_str!("../cube_shader.vert");
 pub struct Game {
     cube: Cube,
     material: Material,
+    scramble_complete: bool,
 }
 
 impl Game {
@@ -33,6 +35,7 @@ impl Game {
                     UniformDesc::array(UniformDesc::new("XRotation", UniformType::Mat4), 3),
                     UniformDesc::array(UniformDesc::new("YRotation", UniformType::Mat4), 3),
                     UniformDesc::array(UniformDesc::new("ZRotation", UniformType::Mat4), 3),
+                    UniformDesc::new("CubeRotation", UniformType::Mat4),
                     UniformDesc::new("CameraPos", UniformType::Float3),
                 ],
                 pipeline_params: PipelineParams {
@@ -45,7 +48,11 @@ impl Game {
         )
         .unwrap();
 
-        Game { cube, material }
+        Game {
+            cube,
+            material,
+            scramble_complete: false,
+        }
     }
 
     pub async fn run(&mut self) {
@@ -58,6 +65,16 @@ impl Game {
     fn update(&mut self) {
         let dt = get_frame_time();
         self.cube.update(dt);
+
+        if !self.scramble_complete && self.cube.is_idle() {
+            self.scramble_complete = true;
+        }
+
+        if self.scramble_complete && self.cube.is_idle() && !self.cube.is_daisy_complete() {
+            if let Some(step) = DaisySolver::next_step(&self.cube) {
+                self.cube.queue_moves(step);
+            }
+        }
     }
 
     async fn render(&self) {
@@ -79,6 +96,13 @@ impl Game {
         self.material.set_uniform_array("YRotation", &rots[1][..]);
         self.material.set_uniform_array("ZRotation", &rots[2][..]);
 
+        let cube_rotation = if self.scramble_complete {
+            Mat4::from_rotation_x(std::f32::consts::PI)
+        } else {
+            Mat4::IDENTITY
+        };
+        self.material.set_uniform("CubeRotation", cube_rotation);
+
         self.material.set_uniform("CameraPos", camera.position);
         gl_use_material(&self.material);
         draw_mesh(&cube_mesh);
@@ -90,6 +114,13 @@ impl Game {
         } else {
             draw_text("UNSOLVED", 10.0, 30.0, 30.0, RED);
         }
+        draw_text(
+            &format!("DAISY: {}/4", self.cube.daisy_count()),
+            10.0,
+            60.0,
+            30.0,
+            WHITE,
+        );
         draw_fps();
 
         next_frame().await

@@ -6,7 +6,7 @@
 - [x] Replace committed floating-point cubie rotations with an exact discrete orientation.
 - [x] Derive rendering quaternions from the exact orientation.
 - [x] Keep move animation separate from committed cube state.
-- [ ] Add queries for locating cubies and determining which direction each sticker faces.
+- [x] Add the first exact-state queries for identifying white edges and their sticker direction.
 - [x] Make solved-state detection use the exact cube state.
 - [x] Preserve the existing move bitflags and prime-move handling.
 
@@ -30,12 +30,12 @@
 ## 3. Daisy milestone
 
 - [ ] Define and document the fixed cube orientation used by the solver.
-- [ ] Add queries for finding white edge pieces and recognizing completed daisy petals.
-- [ ] Implement the human-style rules for moving one white edge to the daisy without losing completed petals.
-- [ ] Repeat daisy steps until all four white edges surround the yellow center.
+- [x] Add queries for finding white edge pieces and recognizing completed daisy petals.
+- [x] Move one white edge to the daisy at a time without losing completed petals.
+- [x] Repeat daisy steps until all four white edges surround the yellow center.
 - [ ] Display the currently selected technique or step while it executes.
-- [ ] Test daisy construction against many deterministic scrambles.
-- [ ] Stop after completing the daisy for the first playable solving milestone.
+- [x] Test daisy construction against many deterministic scrambles.
+- [x] Stop after completing the daisy for the first playable solving milestone.
 
 ## 4. Complete beginner solving
 
@@ -59,5 +59,6 @@
 ## Later
 
 - [ ] Improve scramble generation and avoid immediate cancellations or redundant turns.
+- [ ] Animate the whole-cube rotation into the white-down solving orientation.
 - [ ] Add cube and camera controls without changing the logical cube state.
 - [ ] Replace the placeholder README with accurate project and gameplay documentation.

@@ -1,6 +1,7 @@
 mod cube;
 mod game;
 mod moves;
+mod solver;
 
 use game::*;
 use macroquad::prelude::*;
