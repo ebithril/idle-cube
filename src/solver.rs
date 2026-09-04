@@ -24,6 +24,7 @@ const MOVES: [Move; 18] = [
 ];
 
 const MAX_DAISY_STEP_LENGTH: usize = 5;
+const MAX_CORNER_STEP_LENGTH: usize = 4;
 
 pub struct DaisySolver;
 
@@ -90,6 +91,123 @@ impl DaisyToCrossSolver {
     }
 }
 
+pub struct FirstLayerCornerSolver;
+
+impl FirstLayerCornerSolver {
+    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+        if !cube.is_white_cross_complete() || cube.is_first_layer_complete() {
+            return None;
+        }
+
+        let completed_corners = cube.first_layer_corner_count();
+        let (target_corner, first_side, second_side) = cube.first_unsolved_layer_corner_sides()?;
+
+        if cube.piece_layer(target_corner) == 2 {
+            return find_corner_extraction(cube, target_corner, completed_corners);
+        }
+
+        let (current_x, _, current_z) = cube.piece_position(target_corner);
+        let (home_x, _, home_z) = cube.home_position(target_corner);
+        if (current_x, current_z) != (home_x, home_z) {
+            for adjustment in [[Move::D].as_slice(), &[Move::DPrime], &[Move::D2]] {
+                let mut adjusted = cube.clone();
+                for &move_to_make in adjustment {
+                    adjusted.execute_move(move_to_make);
+                }
+                let (x, _, z) = adjusted.piece_position(target_corner);
+                if (x, z) == (home_x, home_z) {
+                    return Some(adjustment.to_vec());
+                }
+            }
+        }
+
+        let side_faces = [move_for_side(first_side), move_for_side(second_side)];
+        for side in side_faces
+            .into_iter()
+            .flat_map(|side| [side, side.inverse()])
+        {
+            for down in [Move::D, Move::DPrime] {
+                for trigger in [
+                    vec![side, down, side.inverse()],
+                    vec![side, down, side.inverse(), down.inverse()],
+                ] {
+                    let mut attempt = cube.clone();
+                    let mut repeated_trigger = Vec::new();
+                    for _ in 0..6 {
+                        for &move_to_make in &trigger {
+                            attempt.execute_move(move_to_make);
+                        }
+                        repeated_trigger.extend_from_slice(&trigger);
+                        if !attempt.is_white_cross_complete()
+                            || attempt.first_layer_corner_count() < completed_corners
+                        {
+                            break;
+                        }
+                        if attempt.is_piece_solved(target_corner) {
+                            return Some(repeated_trigger);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+}
+
+fn find_corner_extraction(
+    cube: &Cube,
+    target_corner: usize,
+    completed_corners: usize,
+) -> Option<Vec<Move>> {
+    let mut pending = VecDeque::from([(cube.clone(), Vec::new())]);
+    let mut visited = HashSet::from([cube.state_key()]);
+
+    while let Some((state, algorithm)) = pending.pop_front() {
+        if algorithm.len() == MAX_CORNER_STEP_LENGTH {
+            continue;
+        }
+
+        for move_to_make in MOVES {
+            if move_to_make.same_face(Move::U)
+                || algorithm
+                    .last()
+                    .is_some_and(|previous: &Move| previous.same_face(move_to_make))
+            {
+                continue;
+            }
+
+            let mut next = state.clone();
+            next.execute_move(move_to_make);
+            if !visited.insert(next.state_key()) {
+                continue;
+            }
+
+            let mut next_algorithm = algorithm.clone();
+            next_algorithm.push(move_to_make);
+            if next.piece_layer(target_corner) == 0
+                && next.is_white_cross_complete()
+                && next.first_layer_corner_count() >= completed_corners
+            {
+                return Some(next_algorithm);
+            }
+            pending.push_back((next, next_algorithm));
+        }
+    }
+
+    None
+}
+
+fn move_for_side(direction: Direction) -> Move {
+    match direction {
+        Direction::Left => Move::L,
+        Direction::Right => Move::R,
+        Direction::Front => Move::F,
+        Direction::Back => Move::B,
+        Direction::Up | Direction::Down => unreachable!("a corner side cannot be up or down"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -108,6 +226,20 @@ mod tests {
         while !cube.is_white_cross_complete() {
             let step =
                 DaisyToCrossSolver::next_step(cube).expect("a daisy-to-cross step should exist");
+            for move_to_make in step {
+                cube.execute_move(move_to_make);
+            }
+        }
+    }
+
+    fn build_first_layer(cube: &mut Cube) {
+        build_cross(cube);
+        let mut attempts = 0;
+        while !cube.is_first_layer_complete() {
+            attempts += 1;
+            assert!(attempts < 50, "corner solver stopped making progress");
+            let step = FirstLayerCornerSolver::next_step(cube)
+                .expect("a first-layer corner step should exist");
             for move_to_make in step {
                 cube.execute_move(move_to_make);
             }
@@ -180,6 +312,40 @@ mod tests {
                 cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
             }
             build_cross(&mut cube);
+        }
+    }
+
+    #[test]
+    fn scrambled_cube_can_complete_the_first_layer() {
+        let mut cube = Cube::new();
+        for move_to_make in [
+            Move::R,
+            Move::U2,
+            Move::FPrime,
+            Move::L,
+            Move::D2,
+            Move::BPrime,
+        ] {
+            cube.execute_move(move_to_make);
+        }
+
+        build_first_layer(&mut cube);
+        assert!(cube.is_first_layer_complete());
+    }
+
+    #[test]
+    fn deterministic_scrambles_can_complete_the_first_layer() {
+        let mut random_state = 0xcafe_babe_u32;
+
+        for _ in 0..20 {
+            let mut cube = Cube::new();
+            for _ in 0..20 {
+                random_state = random_state
+                    .wrapping_mul(1_664_525)
+                    .wrapping_add(1_013_904_223);
+                cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
+            }
+            build_first_layer(&mut cube);
         }
     }
 }

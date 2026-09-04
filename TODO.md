@@ -40,7 +40,7 @@
 ## 4. Complete beginner solving
 
 - [x] Convert the daisy into the white cross.
-- [ ] Insert first-layer corners.
+- [x] Insert first-layer corners.
 - [ ] Insert second-layer edges.
 - [ ] Build the last-layer cross.
 - [ ] Complete the remaining beginner-method last-layer steps.

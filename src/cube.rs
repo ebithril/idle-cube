@@ -372,6 +372,86 @@ impl Cube {
         self.white_cross_count() == 4
     }
 
+    pub fn first_layer_corner_count(&self) -> usize {
+        const CORNER_POSITIONS: [(usize, usize, usize); 4] =
+            [(0, 2, 0), (2, 2, 0), (0, 2, 2), (2, 2, 2)];
+
+        CORNER_POSITIONS
+            .into_iter()
+            .filter(|&(x, y, z)| {
+                let position = get_idx(x, y, z);
+                let piece = &self.pieces[position];
+                piece.home_index == position && piece.orientation == Orientation::IDENTITY
+            })
+            .count()
+    }
+
+    pub fn is_first_layer_complete(&self) -> bool {
+        self.is_white_cross_complete() && self.first_layer_corner_count() == 4
+    }
+
+    pub(crate) fn first_unsolved_layer_corner_sides(
+        &self,
+    ) -> Option<(usize, Direction, Direction)> {
+        const CORNER_POSITIONS: [(usize, usize, usize); 4] =
+            [(0, 2, 0), (2, 2, 0), (0, 2, 2), (2, 2, 2)];
+
+        CORNER_POSITIONS.into_iter().find_map(|(x, y, z)| {
+            let position = get_idx(x, y, z);
+            let piece = &self.pieces[position];
+            if piece.home_index == position && piece.orientation == Orientation::IDENTITY {
+                return None;
+            }
+
+            let x_side = if x == 0 {
+                Direction::Left
+            } else {
+                Direction::Right
+            };
+            let z_side = if z == 0 {
+                Direction::Back
+            } else {
+                Direction::Front
+            };
+            Some((position, x_side, z_side))
+        })
+    }
+
+    pub(crate) fn piece_state_key(
+        &self,
+        home_index: usize,
+    ) -> (usize, Direction, Direction, Direction) {
+        let (position, piece) = self
+            .pieces
+            .iter()
+            .enumerate()
+            .find(|(_, piece)| piece.home_index == home_index)
+            .expect("every cubie identity must be present");
+        (
+            position,
+            piece.orientation.right,
+            piece.orientation.up,
+            piece.orientation.front,
+        )
+    }
+
+    pub(crate) fn is_piece_solved(&self, home_index: usize) -> bool {
+        let piece = &self.pieces[home_index];
+        piece.home_index == home_index && piece.orientation == Orientation::IDENTITY
+    }
+
+    pub(crate) fn piece_layer(&self, home_index: usize) -> usize {
+        self.piece_position(home_index).1
+    }
+
+    pub(crate) fn piece_position(&self, home_index: usize) -> (usize, usize, usize) {
+        get_3d_index(self.piece_state_key(home_index).0)
+    }
+
+    pub(crate) fn home_position(&self, home_index: usize) -> (usize, usize, usize) {
+        get_3d_index(home_index)
+    }
+
     pub(crate) fn white_edge_home_side_at(
         &self,
         x: usize,
