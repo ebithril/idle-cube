@@ -45,7 +45,7 @@
 - [x] Build the last-layer cross.
 - [x] Permute the last-layer edges.
 - [x] Position the last-layer corners.
-- [ ] Complete the remaining beginner-method last-layer steps.
+- [x] Orient the last-layer corners and complete the beginner solve.
 - [ ] Test that the fallback repertoire solves many deterministic scrambles.
 
 ## 5. Progression and idle-game systems

@@ -1,8 +1,8 @@
 use crate::cube::Cube;
 use crate::moves::random_scramble;
 use crate::solver::{
-    DaisySolver, DaisyToCrossSolver, FirstLayerCornerSolver, LastLayerCornerPositionSolver,
-    LastLayerEdgeSolver, SecondLayerEdgeSolver, YellowCrossSolver,
+    DaisySolver, DaisyToCrossSolver, FirstLayerCornerSolver, LastLayerCornerOrientationSolver,
+    LastLayerCornerPositionSolver, LastLayerEdgeSolver, SecondLayerEdgeSolver, YellowCrossSolver,
 };
 
 use macroquad::prelude::*;
@@ -71,11 +71,10 @@ impl Game {
             self.scramble_complete = true;
         }
 
-        if self.scramble_complete
-            && self.cube.is_idle()
-            && !self.cube.are_last_layer_corners_positioned()
-        {
-            if let Some(step) = LastLayerCornerPositionSolver::next_step(&self.cube) {
+        if self.scramble_complete && self.cube.is_idle() && !self.cube.is_solved() {
+            if let Some(step) = LastLayerCornerOrientationSolver::next_step(&self.cube) {
+                self.cube.queue_moves(step);
+            } else if let Some(step) = LastLayerCornerPositionSolver::next_step(&self.cube) {
                 self.cube.queue_moves(step);
             } else if let Some(step) = LastLayerEdgeSolver::next_step(&self.cube) {
                 self.cube.queue_moves(step);
@@ -179,6 +178,16 @@ impl Game {
             ),
             10.0,
             240.0,
+            30.0,
+            YELLOW,
+        );
+        draw_text(
+            &format!(
+                "ORIENTED CORNERS: {}/4",
+                self.cube.oriented_last_layer_corner_count()
+            ),
+            10.0,
+            270.0,
             30.0,
             YELLOW,
         );

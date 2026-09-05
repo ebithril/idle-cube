@@ -331,6 +331,78 @@ impl LastLayerCornerPositionSolver {
     }
 }
 
+pub struct LastLayerCornerOrientationSolver;
+
+impl LastLayerCornerOrientationSolver {
+    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+        if !cube.are_last_layer_corners_positioned() || cube.is_solved() {
+            return None;
+        }
+
+        for trigger in last_layer_corner_orientation_actions() {
+            for layer_turn in [Move::D, Move::DPrime] {
+                if let Some(solution) =
+                    search_corner_twists(cube, &trigger, layer_turn, 4, &mut Vec::new())
+                {
+                    return Some(solution);
+                }
+            }
+        }
+
+        None
+    }
+}
+
+fn search_corner_twists(
+    cube: &Cube,
+    trigger: &[Move],
+    layer_turn: Move,
+    corners_remaining: usize,
+    moves: &mut Vec<Move>,
+) -> Option<Vec<Move>> {
+    if corners_remaining == 0 {
+        return cube.is_solved().then(|| moves.clone());
+    }
+
+    let mut twisted = cube.clone();
+    let initial_length = moves.len();
+    for repetitions in 0..6 {
+        if repetitions > 0 {
+            for &move_to_make in trigger {
+                twisted.execute_move(move_to_make);
+                moves.push(move_to_make);
+            }
+        }
+
+        let mut next = twisted.clone();
+        next.execute_move(layer_turn);
+        moves.push(layer_turn);
+        if let Some(solution) =
+            search_corner_twists(&next, trigger, layer_turn, corners_remaining - 1, moves)
+        {
+            return Some(solution);
+        }
+        moves.pop();
+    }
+    moves.truncate(initial_length);
+
+    None
+}
+
+fn last_layer_corner_orientation_actions() -> Vec<Vec<Move>> {
+    let mut actions = Vec::new();
+
+    for side in [Move::R, Move::F, Move::L, Move::B] {
+        for side in [side, side.inverse()] {
+            for up in [Move::U, Move::UPrime] {
+                actions.push(vec![side, up, side.inverse(), up.inverse()]);
+            }
+        }
+    }
+
+    actions
+}
+
 fn last_layer_corner_position_algorithms() -> Vec<Vec<Move>> {
     let opposite_faces = [(Move::R, Move::L), (Move::F, Move::B)];
     let mut algorithms = Vec::new();
@@ -599,6 +671,17 @@ mod tests {
         }
     }
 
+    fn orient_last_layer_corners(cube: &mut Cube) {
+        position_last_layer_corners(cube);
+        if !cube.is_solved() {
+            let step = LastLayerCornerOrientationSolver::next_step(cube)
+                .expect("a corner-orientation step should exist");
+            for move_to_make in step {
+                cube.execute_move(move_to_make);
+            }
+        }
+    }
+
     #[test]
     fn solved_cube_can_build_a_daisy() {
         let mut cube = Cube::new();
@@ -835,6 +918,40 @@ mod tests {
                 cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
             }
             position_last_layer_corners(&mut cube);
+        }
+    }
+
+    #[test]
+    fn scrambled_cube_can_be_solved() {
+        let mut cube = Cube::new();
+        for move_to_make in [
+            Move::R,
+            Move::U2,
+            Move::FPrime,
+            Move::L,
+            Move::D2,
+            Move::BPrime,
+        ] {
+            cube.execute_move(move_to_make);
+        }
+
+        orient_last_layer_corners(&mut cube);
+        assert!(cube.is_solved());
+    }
+
+    #[test]
+    fn deterministic_scrambles_can_be_solved() {
+        let mut random_state = 0x501d_c0de_u32;
+
+        for _ in 0..20 {
+            let mut cube = Cube::new();
+            for _ in 0..20 {
+                random_state = random_state
+                    .wrapping_mul(1_664_525)
+                    .wrapping_add(1_013_904_223);
+                cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
+            }
+            orient_last_layer_corners(&mut cube);
         }
     }
 }

@@ -461,6 +461,19 @@ impl Cube {
         self.are_last_layer_edges_complete() && self.positioned_last_layer_corner_count() == 4
     }
 
+    pub fn oriented_last_layer_corner_count(&self) -> usize {
+        const CORNER_POSITIONS: [(usize, usize, usize); 4] =
+            [(0, 0, 0), (2, 0, 0), (0, 0, 2), (2, 0, 2)];
+
+        CORNER_POSITIONS
+            .into_iter()
+            .filter(|&(x, y, z)| {
+                let piece = &self.pieces[get_idx(x, y, z)];
+                piece.orientation.transform(Direction::Down) == Direction::Down
+            })
+            .count()
+    }
+
     pub(crate) fn second_layer_edges_on_down_count(&self) -> usize {
         self.pieces
             .iter()
