@@ -86,7 +86,7 @@ impl Orientation {
         let rotate_direction = |direction: Direction| {
             if move_to_make.intersects(Move::U | Move::D) {
                 direction.rotate_y(sign)
-            } else if move_to_make.intersects(Move::R | Move::L) {
+            } else if move_to_make.intersects(Move::R | Move::L | Move::M) {
                 direction.rotate_x(sign)
             } else {
                 direction.rotate_z(sign)
@@ -1297,6 +1297,24 @@ mod tests {
         cube.execute_move(Move::M);
         cube.execute_move(Move::MPrime);
         assert!(cube.is_solved());
+    }
+
+    #[test]
+    fn m_slice_rotates_cubie_orientation_around_the_x_axis() {
+        let mut cube = Cube::new();
+        let yellow_front_edge = get_idx(1, 0, 2);
+
+        cube.execute_move(Move::M);
+
+        assert_eq!(
+            cube.piece_state_key(yellow_front_edge),
+            (
+                get_idx(1, 0, 0),
+                Direction::Right,
+                Direction::Front,
+                Direction::Down
+            )
+        );
     }
 
     #[test]
