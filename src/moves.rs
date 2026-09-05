@@ -24,6 +24,19 @@ bitflags! {
         const D2 = 0b01001000;
         const L2 = 0b01010000;
         const B2 = 0b01100000;
+        const Rw = 0b100000010;
+        const RwPrime = 0b110000010;
+        const Fw = 0b100000100;
+        const FwPrime = 0b110000100;
+        const Bw = 0b100100000;
+        const BwPrime = 0b110100000;
+        const Wide = 0b100000000;
+        const M = 0b1000000000;
+        const M2 = 0b1001000000;
+        const MPrime = 0b1010000000;
+        const S = 0b10000000000;
+        const S2 = 0b10001000000;
+        const SPrime = 0b10010000000;
         const Double = 0b01000000;
         const Prime = 0b10000000;
     }
@@ -35,9 +48,17 @@ impl Move {
     }
 
     pub fn get_prime_sign(&self) -> f32 {
-        if self.contains(Move::U) || self.contains(Move::R) || self.contains(Move::F) {
+        if self.contains(Move::U)
+            || self.contains(Move::R)
+            || self.contains(Move::F)
+            || self.contains(Move::S)
+        {
             1.
-        } else if self.contains(Move::D) || self.contains(Move::L) || self.contains(Move::B) {
+        } else if self.contains(Move::D)
+            || self.contains(Move::L)
+            || self.contains(Move::B)
+            || self.contains(Move::M)
+        {
             -1.
         } else {
             panic!("This should never happen");
@@ -58,6 +79,10 @@ impl Move {
 
     pub fn is_double(&self) -> bool {
         self.contains(Self::Double)
+    }
+
+    pub fn is_wide(&self) -> bool {
+        self.contains(Self::Wide)
     }
 
     pub fn get_angle(&self) -> f32 {
@@ -84,7 +109,9 @@ impl Move {
             .union(Move::F)
             .union(Move::D)
             .union(Move::L)
-            .union(Move::B);
+            .union(Move::B)
+            .union(Move::M)
+            .union(Move::S);
 
         (*self & FACES) == (other & FACES)
     }
@@ -92,9 +119,9 @@ impl Move {
     pub fn create_rotation(&self, angle: f32) -> Quat {
         if self.contains(Move::U) || self.contains(Move::D) {
             Quat::from_rotation_y(angle)
-        } else if self.contains(Move::R) || self.contains(Move::L) {
+        } else if self.contains(Move::R) || self.contains(Move::L) || self.contains(Move::M) {
             Quat::from_rotation_x(angle)
-        } else if self.contains(Move::F) || self.contains(Move::B) {
+        } else if self.contains(Move::F) || self.contains(Move::B) || self.contains(Move::S) {
             Quat::from_rotation_z(angle)
         } else {
             panic!("This should never happen");

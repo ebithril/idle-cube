@@ -57,7 +57,8 @@
 - [x] Add the skill-tree foundation and spendable skill points.
 - [x] Allow direct cross to supersede the daisy route when unlocked.
 - [x] Add intuitive F2L techniques as alternatives to beginner first- and second-layer steps.
-- [ ] Add individual OLL and PLL cases above the beginner fallbacks as they are learned.
+- [x] Add individual 2-look PLL cases above the beginner fallbacks as they are learned.
+- [x] Add individual 2-look OLL cases as sibling choices in the skill tree.
 - [x] Track move count and solve time.
 - [x] Track rolling AO3, AO5, AO20, and AO100 statistics.
 - [x] Add fixed recognition pauses between solve steps and track recognition time.

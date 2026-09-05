@@ -1,4 +1,4 @@
-use crate::solver::SkillId;
+use crate::solver::{OllAlgorithm, PllAlgorithm, SkillId};
 use std::collections::{HashMap, HashSet};
 
 const STARTING_TPS: f32 = 1.0;
@@ -6,15 +6,16 @@ const STARTING_RECOGNITION_TIME: f32 = 0.5;
 const MIN_RECOGNITION_TIME: f32 = 0.05;
 const TURNING_MASTERY_SCALE: f32 = 20.0;
 const RECOGNITION_MASTERY_SCALE: f32 = 20.0;
-const XP_PER_SOLVE: f32 = 10.0;
 const INITIAL_LEVEL_XP: f32 = 20.0;
 const LEVEL_XP_MULTIPLIER: f32 = 1.25;
-const LEVEL_TPS_MULTIPLIER: f32 = 1.01;
+const LEVEL_TPS_MULTIPLIER: f32 = 1.1;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Technique {
     DirectCross,
     IntuitiveF2L,
+    Oll(OllAlgorithm),
+    Pll(PllAlgorithm),
 }
 
 impl Technique {
@@ -76,8 +77,12 @@ impl PlayerSkills {
         self.xp / self.xp_to_next_level()
     }
 
-    pub fn award_solve_xp(&mut self) {
-        self.xp += XP_PER_SOLVE;
+    pub fn award_solve_xp(&mut self, solve_seconds: f32) {
+        self.award_xp(solve_xp(solve_seconds));
+    }
+
+    fn award_xp(&mut self, amount: f32) {
+        self.xp += amount;
         while self.xp >= self.xp_to_next_level() {
             self.xp -= self.xp_to_next_level();
             self.level += 1;
@@ -94,7 +99,7 @@ impl PlayerSkills {
         if self.is_unlocked(technique) || self.skill_points < technique.cost() {
             return false;
         }
-        if technique == Technique::IntuitiveF2L && !self.is_unlocked(Technique::DirectCross) {
+        if technique != Technique::DirectCross && !self.is_unlocked(Technique::DirectCross) {
             return false;
         }
 
@@ -129,13 +134,27 @@ impl PlayerSkills {
     }
 }
 
+pub fn solve_xp(solve_seconds: f32) -> f32 {
+    if solve_seconds >= 120.0 {
+        10.0
+    } else if solve_seconds >= 60.0 {
+        10.0 + (120.0 - solve_seconds) / 6.0
+    } else {
+        let world_record_progress = ((60.0 - solve_seconds) / 57.0).clamp(0.0, 1.0);
+        20.0 + 80.0 * world_record_progress.powi(2)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn practice_improves_only_the_practiced_skill() {
-        let mut skills = PlayerSkills::default();
+        let mut skills = PlayerSkills {
+            max_tps: STARTING_TPS * 1.01,
+            ..Default::default()
+        };
         let practiced = SkillId::BuildDaisy;
         let untouched = SkillId::YellowCross;
         let initial_recognition = skills.recognition_time(practiced);
@@ -168,15 +187,16 @@ mod tests {
         let mut skills = PlayerSkills::default();
         let starting_tps = skills.max_tps();
 
-        skills.award_solve_xp();
+        let required_xp = skills.xp_to_next_level();
+        skills.award_xp(required_xp / 2.0);
         assert_eq!(skills.level(), 1);
         assert_eq!(skills.xp_progress(), 0.5);
-        skills.award_solve_xp();
+        skills.award_xp(required_xp / 2.0);
 
         assert_eq!(skills.level(), 2);
         assert_eq!(skills.skill_points(), 1);
         assert_eq!(skills.xp(), 0.0);
-        assert!((skills.max_tps() - starting_tps * 1.01).abs() < f32::EPSILON);
+        assert!((skills.max_tps() - starting_tps * LEVEL_TPS_MULTIPLIER).abs() < 1e-6);
     }
 
     #[test]
@@ -184,8 +204,7 @@ mod tests {
         let mut skills = PlayerSkills::default();
 
         assert!(!skills.unlock(Technique::DirectCross));
-        skills.award_solve_xp();
-        skills.award_solve_xp();
+        skills.skill_points = 1;
         assert!(skills.unlock(Technique::DirectCross));
         assert!(skills.is_unlocked(Technique::DirectCross));
         assert_eq!(skills.skill_points(), 0);
@@ -194,14 +213,50 @@ mod tests {
 
     #[test]
     fn intuitive_f2l_requires_direct_cross() {
-        let mut skills = PlayerSkills::default();
-        for _ in 0..5 {
-            skills.award_solve_xp();
-        }
+        let mut skills = PlayerSkills {
+            skill_points: 2,
+            ..Default::default()
+        };
 
         assert_eq!(skills.skill_points(), 2);
         assert!(!skills.unlock(Technique::IntuitiveF2L));
         assert!(skills.unlock(Technique::DirectCross));
         assert!(skills.unlock(Technique::IntuitiveF2L));
+    }
+
+    #[test]
+    fn pll_algorithms_branch_directly_from_cross() {
+        let mut skills = PlayerSkills {
+            skill_points: 2,
+            ..Default::default()
+        };
+
+        assert!(!skills.unlock(Technique::Pll(PllAlgorithm::Ua)));
+        assert!(skills.unlock(Technique::DirectCross));
+        assert!(skills.unlock(Technique::Pll(PllAlgorithm::Ua)));
+        assert!(!skills.is_unlocked(Technique::IntuitiveF2L));
+    }
+
+    #[test]
+    fn oll_algorithms_branch_directly_from_cross() {
+        let mut skills = PlayerSkills {
+            skill_points: 2,
+            ..Default::default()
+        };
+
+        assert!(!skills.unlock(Technique::Oll(OllAlgorithm::Sune)));
+        assert!(skills.unlock(Technique::DirectCross));
+        assert!(skills.unlock(Technique::Oll(OllAlgorithm::Sune)));
+        assert!(!skills.is_unlocked(Technique::IntuitiveF2L));
+    }
+
+    #[test]
+    fn solve_xp_scales_from_two_minutes_to_world_record_pace() {
+        assert_eq!(solve_xp(180.0), 10.0);
+        assert_eq!(solve_xp(120.0), 10.0);
+        assert_eq!(solve_xp(60.0), 20.0);
+        assert_eq!(solve_xp(3.0), 100.0);
+        assert!(solve_xp(30.0) > solve_xp(45.0));
+        assert!(solve_xp(30.0) < 100.0);
     }
 }

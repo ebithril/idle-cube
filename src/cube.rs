@@ -449,6 +449,24 @@ impl Cube {
         self.is_second_layer_complete() && self.yellow_cross_count() == 4
     }
 
+    pub fn yellow_last_layer_orientation_count(&self) -> usize {
+        self.pieces
+            .iter()
+            .filter(|piece| {
+                let (home_x, home_y, home_z) = get_3d_index(piece.home_index);
+                let (_, current_y, _) = self.piece_position(piece.home_index);
+                home_y == 0
+                    && (home_x != 1 || home_z != 1)
+                    && current_y == 0
+                    && piece.orientation.transform(Direction::Down) == Direction::Down
+            })
+            .count()
+    }
+
+    pub fn is_oll_complete(&self) -> bool {
+        self.is_second_layer_complete() && self.yellow_last_layer_orientation_count() == 8
+    }
+
     pub fn last_layer_edge_count(&self) -> usize {
         const EDGE_POSITIONS: [(usize, usize, usize); 4] =
             [(1, 0, 0), (0, 0, 1), (2, 0, 1), (1, 0, 2)];
@@ -646,11 +664,36 @@ impl Cube {
         let l_rotation = self.get_rotation_angle(Move::L);
         let d_rotation = self.get_rotation_angle(Move::D);
         let b_rotation = self.get_rotation_angle(Move::B);
+        let m_rotation = self.get_rotation_angle(Move::M);
+        let s_rotation = self.get_rotation_angle(Move::S);
+
+        let middle_x = if self.alg.front().is_some_and(|m| m.contains(Move::M)) {
+            m_rotation
+        } else if self
+            .alg
+            .front()
+            .is_some_and(|m| m.is_wide() && m.contains(Move::R))
+        {
+            r_rotation
+        } else {
+            Mat4::IDENTITY
+        };
+        let middle_z = self.alg.front().map_or(Mat4::IDENTITY, |move_to_make| {
+            if move_to_make.contains(Move::S) {
+                s_rotation
+            } else if move_to_make.is_wide() && move_to_make.contains(Move::F) {
+                f_rotation
+            } else if move_to_make.is_wide() && move_to_make.contains(Move::B) {
+                b_rotation
+            } else {
+                Mat4::IDENTITY
+            }
+        });
 
         [
-            [l_rotation, Mat4::IDENTITY, r_rotation],
+            [l_rotation, middle_x, r_rotation],
             [d_rotation, Mat4::IDENTITY, u_rotation],
-            [b_rotation, Mat4::IDENTITY, f_rotation],
+            [b_rotation, middle_z, f_rotation],
         ]
     }
 
@@ -773,6 +816,24 @@ impl Cube {
     }
 
     pub fn execute_move(&mut self, move_to_make: Move) {
+        if move_to_make.is_wide() {
+            let face_turn = move_to_make & !Move::Wide;
+            self.execute_move(face_turn);
+            self.execute_middle_slice(face_turn);
+            return;
+        }
+
+        if move_to_make.intersects(Move::M | Move::S) {
+            if move_to_make.is_double() {
+                let quarter_turn = move_to_make & !Move::Double;
+                self.execute_move(quarter_turn);
+                self.execute_move(quarter_turn);
+            } else {
+                self.execute_middle_slice(move_to_make);
+            }
+            return;
+        }
+
         if move_to_make.is_double() {
             let quarter_turn = move_to_make & !Move::Double;
             self.execute_move(quarter_turn);
@@ -800,6 +861,50 @@ impl Cube {
                 self.pieces[corners[i]].orientation.rotate(move_to_make);
         }
         self.pieces[corners[3]] = buffer;
+    }
+
+    fn execute_middle_slice(&mut self, move_to_make: Move) {
+        let old_pieces = self.pieces.clone();
+        for (source, source_piece) in old_pieces.iter().enumerate() {
+            let (x, y, z) = get_3d_index(source);
+            let (destination_x, destination_y, destination_z) = if (move_to_make.contains(Move::R)
+                || move_to_make.contains(Move::M))
+                && x == 1
+            {
+                let turns_like_right = if move_to_make.contains(Move::R) {
+                    !move_to_make.is_prime()
+                } else {
+                    move_to_make.is_prime()
+                };
+                if turns_like_right {
+                    (x, z, 2 - y)
+                } else {
+                    (x, 2 - z, y)
+                }
+            } else if (move_to_make.contains(Move::F) || move_to_make.contains(Move::S)) && z == 1 {
+                if move_to_make.is_prime() {
+                    (2 - y, x, z)
+                } else {
+                    (y, 2 - x, z)
+                }
+            } else if move_to_make.contains(Move::B) && z == 1 {
+                if move_to_make.is_prime() {
+                    (y, 2 - x, z)
+                } else {
+                    (2 - y, x, z)
+                }
+            } else {
+                continue;
+            };
+
+            if (destination_x, destination_y, destination_z) == (1, 1, 1) {
+                continue;
+            }
+            let destination = get_idx(destination_x, destination_y, destination_z);
+            let mut piece = source_piece.clone();
+            piece.orientation = piece.orientation.rotate(move_to_make);
+            self.pieces[destination] = piece;
+        }
     }
 
     pub fn is_solved(&self) -> bool {
@@ -1173,6 +1278,24 @@ mod tests {
         for move_to_make in algorithm.into_iter().rev() {
             cube.execute_move(move_to_make.inverse());
         }
+        assert!(cube.is_solved());
+    }
+
+    #[test]
+    fn wide_move_followed_by_its_inverse_restores_the_cube() {
+        for move_to_make in [Move::Rw, Move::Fw, Move::Bw] {
+            let mut cube = Cube::new();
+            cube.execute_move(move_to_make);
+            cube.execute_move(move_to_make.inverse());
+            assert!(cube.is_solved());
+        }
+    }
+
+    #[test]
+    fn slice_move_followed_by_its_inverse_restores_the_cube() {
+        let mut cube = Cube::new();
+        cube.execute_move(Move::M);
+        cube.execute_move(Move::MPrime);
         assert!(cube.is_solved());
     }
 

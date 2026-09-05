@@ -2,9 +2,10 @@ use crate::cube::Cube;
 use crate::moves::random_scramble;
 use crate::progression::{PlayerSkills, Technique};
 use crate::solver::{
-    DaisySolver, DaisyToCrossSolver, DirectCrossSolver, FirstLayerCornerSolver, IntuitiveF2LSolver,
-    LastLayerCornerOrientationSolver, LastLayerCornerPositionSolver, LastLayerEdgeSolver,
-    SecondLayerEdgeSolver, SolveStep, YellowCrossSolver,
+    BeginnerOllSolver, DaisySolver, DaisyToCrossSolver, DirectCrossSolver, FirstLayerCornerSolver,
+    IntuitiveF2LSolver, LastLayerCornerOrientationSolver, LastLayerCornerPositionSolver,
+    LastLayerEdgeSolver, OllAlgorithm, OllSolver, PllAlgorithm, PllSolver, SecondLayerEdgeSolver,
+    SolveStep, YellowCrossSolver,
 };
 
 use macroquad::prelude::*;
@@ -22,6 +23,28 @@ fn direct_cross_button() -> Rect {
 
 fn intuitive_f2l_button() -> Rect {
     Rect::new(screen_width() - 310.0, 170.0, 290.0, 70.0)
+}
+
+fn pll_button(index: usize) -> Rect {
+    let column = index % 2;
+    let row = index / 2;
+    Rect::new(
+        screen_width() - 310.0 + column as f32 * 150.0,
+        280.0 + row as f32 * 62.0,
+        140.0,
+        52.0,
+    )
+}
+
+fn oll_button(index: usize) -> Rect {
+    let column = index % 2;
+    let row = index / 2;
+    Rect::new(
+        screen_width() - 310.0 + column as f32 * 150.0,
+        490.0 + row as f32 * 46.0,
+        140.0,
+        40.0,
+    )
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -181,7 +204,12 @@ impl Game {
                 .update(dt, completed_move.is_some(), was_recognizing);
             if self.cube.is_idle() && self.cube.is_solved() {
                 self.solve_timing.finish();
-                self.player_skills.award_solve_xp();
+                let solve_seconds = self
+                    .solve_timing
+                    .last
+                    .expect("the completed solve was recorded")
+                    .time;
+                self.player_skills.award_solve_xp(solve_seconds);
                 self.queue_scramble();
                 return;
             }
@@ -211,7 +239,23 @@ impl Game {
     }
 
     fn select_next_step(&self) -> Option<SolveStep> {
-        LastLayerCornerOrientationSolver::next_step(&self.cube)
+        let learned_plls: Vec<_> = PllAlgorithm::ALL
+            .into_iter()
+            .filter(|&algorithm| self.player_skills.is_unlocked(Technique::Pll(algorithm)))
+            .collect();
+        let learned_olls: Vec<_> = OllAlgorithm::ALL
+            .into_iter()
+            .filter(|&algorithm| self.player_skills.is_unlocked(Technique::Oll(algorithm)))
+            .collect();
+
+        PllSolver::next_step(&self.cube, &learned_plls)
+            .or_else(|| OllSolver::next_step(&self.cube, &learned_olls))
+            .or_else(|| {
+                (!learned_plls.is_empty())
+                    .then(|| BeginnerOllSolver::next_step(&self.cube))
+                    .flatten()
+            })
+            .or_else(|| LastLayerCornerOrientationSolver::next_step(&self.cube))
             .or_else(|| LastLayerCornerPositionSolver::next_step(&self.cube))
             .or_else(|| LastLayerEdgeSolver::next_step(&self.cube))
             .or_else(|| YellowCrossSolver::next_step(&self.cube))
@@ -250,6 +294,19 @@ impl Game {
                 self.player_skills.unlock(Technique::DirectCross);
             } else if intuitive_f2l_button().contains(mouse) {
                 self.player_skills.unlock(Technique::IntuitiveF2L);
+            } else {
+                for (index, algorithm) in PllAlgorithm::ALL.into_iter().enumerate() {
+                    if pll_button(index).contains(mouse) {
+                        self.player_skills.unlock(Technique::Pll(algorithm));
+                        break;
+                    }
+                }
+                for (index, algorithm) in OllAlgorithm::ALL.into_iter().enumerate() {
+                    if oll_button(index).contains(mouse) {
+                        self.player_skills.unlock(Technique::Oll(algorithm));
+                        break;
+                    }
+                }
             }
         }
     }
@@ -384,6 +441,31 @@ impl Game {
         let f2l_unlocked = self.player_skills.is_unlocked(Technique::IntuitiveF2L);
         let f2l_available =
             cross_unlocked && self.player_skills.skill_points() >= Technique::IntuitiveF2L.cost();
+        let branch_y = direct_cross.y + direct_cross.h + 10.0;
+        draw_line(
+            direct_cross.x + direct_cross.w / 2.0,
+            direct_cross.y + direct_cross.h,
+            direct_cross.x + direct_cross.w / 2.0,
+            branch_y,
+            3.0,
+            LIGHTGRAY,
+        );
+        draw_line(
+            intuitive_f2l.x + intuitive_f2l.w / 2.0,
+            branch_y,
+            direct_cross.x + direct_cross.w / 2.0,
+            branch_y,
+            3.0,
+            LIGHTGRAY,
+        );
+        draw_line(
+            intuitive_f2l.x + intuitive_f2l.w / 2.0,
+            branch_y,
+            intuitive_f2l.x + intuitive_f2l.w / 2.0,
+            intuitive_f2l.y,
+            3.0,
+            LIGHTGRAY,
+        );
         draw_rectangle(
             intuitive_f2l.x,
             intuitive_f2l.y,
@@ -417,6 +499,92 @@ impl Game {
             19.0,
             LIGHTGRAY,
         );
+
+        draw_text(
+            "2-LOOK PLL - EACH ALGORITHM COSTS 1 SP",
+            direct_cross.x,
+            265.0,
+            18.0,
+            WHITE,
+        );
+        for (index, algorithm) in PllAlgorithm::ALL.into_iter().enumerate() {
+            let button = pll_button(index);
+            let unlocked = self.player_skills.is_unlocked(Technique::Pll(algorithm));
+            let available = cross_unlocked && self.player_skills.skill_points() > 0;
+            draw_rectangle(
+                button.x,
+                button.y,
+                button.w,
+                button.h,
+                if unlocked {
+                    DARKGREEN
+                } else if available {
+                    BLUE
+                } else {
+                    DARKGRAY
+                },
+            );
+            draw_text(
+                algorithm.name(),
+                button.x + 8.0,
+                button.y + 22.0,
+                20.0,
+                WHITE,
+            );
+            draw_text(
+                if unlocked {
+                    "LEARNED"
+                } else if cross_unlocked {
+                    "1 SP"
+                } else {
+                    "LOCKED"
+                },
+                button.x + 8.0,
+                button.y + 43.0,
+                16.0,
+                LIGHTGRAY,
+            );
+        }
+
+        draw_text("2-LOOK OLL - 1 SP EACH", direct_cross.x, 478.0, 18.0, WHITE);
+        for (index, algorithm) in OllAlgorithm::ALL.into_iter().enumerate() {
+            let button = oll_button(index);
+            let unlocked = self.player_skills.is_unlocked(Technique::Oll(algorithm));
+            let available = cross_unlocked && self.player_skills.skill_points() > 0;
+            draw_rectangle(
+                button.x,
+                button.y,
+                button.w,
+                button.h,
+                if unlocked {
+                    DARKGREEN
+                } else if available {
+                    BLUE
+                } else {
+                    DARKGRAY
+                },
+            );
+            draw_text(
+                algorithm.name(),
+                button.x + 6.0,
+                button.y + 18.0,
+                16.0,
+                WHITE,
+            );
+            draw_text(
+                if unlocked {
+                    "LEARNED"
+                } else if cross_unlocked {
+                    "1 SP"
+                } else {
+                    "LOCKED"
+                },
+                button.x + 6.0,
+                button.y + 34.0,
+                13.0,
+                LIGHTGRAY,
+            );
+        }
 
         let xp_bar = Rect::new(20.0, screen_height() - 38.0, screen_width() - 40.0, 22.0);
         draw_rectangle(xp_bar.x, xp_bar.y, xp_bar.w, xp_bar.h, DARKGRAY);

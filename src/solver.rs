@@ -35,9 +35,13 @@ pub enum SkillId {
     DaisyToCross,
     DirectCross,
     IntuitiveF2L,
+    Oll(OllAlgorithm),
+    Pll(PllAlgorithm),
+    AlignLastLayer,
     BeginnerCornerInsertion,
     BeginnerSecondLayerInsertion,
     YellowCross,
+    BeginnerOllOrientation,
     PermuteYellowEdges,
     PositionYellowCorners,
     OrientYellowCorners,
@@ -50,12 +54,287 @@ impl SkillId {
             Self::DaisyToCross => "Daisy to cross",
             Self::DirectCross => "Direct cross",
             Self::IntuitiveF2L => "Intuitive F2L",
+            Self::Oll(algorithm) => algorithm.name(),
+            Self::Pll(algorithm) => algorithm.name(),
+            Self::AlignLastLayer => "Align last layer",
             Self::BeginnerCornerInsertion => "Beginner corner insertion",
             Self::BeginnerSecondLayerInsertion => "Beginner second-layer insertion",
             Self::YellowCross => "Yellow cross",
+            Self::BeginnerOllOrientation => "Beginner OLL orientation",
             Self::PermuteYellowEdges => "Permute yellow edges",
             Self::PositionYellowCorners => "Position yellow corners",
             Self::OrientYellowCorners => "Orient yellow corners",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PllAlgorithm {
+    Ua,
+    Ub,
+    H,
+    Z,
+    Headlights,
+    Diagonal,
+}
+
+impl PllAlgorithm {
+    pub const ALL: [Self; 6] = [
+        Self::Ua,
+        Self::Ub,
+        Self::H,
+        Self::Z,
+        Self::Headlights,
+        Self::Diagonal,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Ua => "Ua PLL",
+            Self::Ub => "Ub PLL",
+            Self::H => "H PLL",
+            Self::Z => "Z PLL",
+            Self::Headlights => "Headlights (T)",
+            Self::Diagonal => "Diagonal (Y)",
+        }
+    }
+
+    fn permutes_corners(self) -> bool {
+        matches!(self, Self::Headlights | Self::Diagonal)
+    }
+
+    fn moves(self) -> Vec<Move> {
+        match self {
+            Self::Headlights => vec![
+                Move::R,
+                Move::D,
+                Move::RPrime,
+                Move::DPrime,
+                Move::RPrime,
+                Move::B,
+                Move::R2,
+                Move::DPrime,
+                Move::RPrime,
+                Move::DPrime,
+                Move::R,
+                Move::D,
+                Move::RPrime,
+                Move::BPrime,
+            ],
+            Self::Diagonal => vec![
+                Move::B,
+                Move::R,
+                Move::DPrime,
+                Move::RPrime,
+                Move::DPrime,
+                Move::R,
+                Move::D,
+                Move::RPrime,
+                Move::BPrime,
+                Move::R,
+                Move::D,
+                Move::RPrime,
+                Move::DPrime,
+                Move::RPrime,
+                Move::B,
+                Move::R,
+                Move::BPrime,
+            ],
+            Self::Ua => vec![
+                Move::M2,
+                Move::D,
+                Move::M,
+                Move::D2,
+                Move::MPrime,
+                Move::D,
+                Move::M2,
+            ],
+            Self::Ub => vec![
+                Move::M2,
+                Move::DPrime,
+                Move::M,
+                Move::D2,
+                Move::MPrime,
+                Move::DPrime,
+                Move::M2,
+            ],
+            Self::H => vec![
+                Move::M2,
+                Move::D,
+                Move::M2,
+                Move::D2,
+                Move::M2,
+                Move::D,
+                Move::M2,
+            ],
+            Self::Z => vec![
+                Move::M2,
+                Move::D,
+                Move::M2,
+                Move::D,
+                Move::MPrime,
+                Move::D2,
+                Move::M2,
+                Move::D2,
+                Move::MPrime,
+                Move::D2,
+            ],
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum OllAlgorithm {
+    Dot,
+    I,
+    LEdges,
+    Antisune,
+    H,
+    LCorners,
+    Pi,
+    Sune,
+    T,
+    U,
+}
+
+impl OllAlgorithm {
+    pub const ALL: [Self; 10] = [
+        Self::Dot,
+        Self::I,
+        Self::LEdges,
+        Self::Antisune,
+        Self::H,
+        Self::LCorners,
+        Self::Pi,
+        Self::Sune,
+        Self::T,
+        Self::U,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Dot => "Dot OLL",
+            Self::I => "I OLL",
+            Self::LEdges => "L-edge OLL",
+            Self::Antisune => "Antisune",
+            Self::H => "H OLL",
+            Self::LCorners => "L-corner OLL",
+            Self::Pi => "Pi OLL",
+            Self::Sune => "Sune",
+            Self::T => "T OLL",
+            Self::U => "U OLL",
+        }
+    }
+
+    fn orients_edges(self) -> bool {
+        matches!(self, Self::Dot | Self::I | Self::LEdges)
+    }
+
+    fn moves(self) -> Vec<Move> {
+        match self {
+            Self::Dot => vec![
+                Move::B,
+                Move::R,
+                Move::D,
+                Move::RPrime,
+                Move::DPrime,
+                Move::BPrime,
+                Move::Bw,
+                Move::R,
+                Move::D,
+                Move::RPrime,
+                Move::DPrime,
+                Move::BwPrime,
+            ],
+            Self::I => vec![
+                Move::B,
+                Move::R,
+                Move::D,
+                Move::RPrime,
+                Move::DPrime,
+                Move::BPrime,
+            ],
+            Self::LEdges => vec![
+                Move::Bw,
+                Move::R,
+                Move::D,
+                Move::RPrime,
+                Move::DPrime,
+                Move::BwPrime,
+            ],
+            Self::Antisune => vec![
+                Move::R,
+                Move::D2,
+                Move::RPrime,
+                Move::DPrime,
+                Move::R,
+                Move::DPrime,
+                Move::RPrime,
+            ],
+            Self::H => vec![
+                Move::R,
+                Move::D,
+                Move::RPrime,
+                Move::D,
+                Move::R,
+                Move::DPrime,
+                Move::RPrime,
+                Move::D,
+                Move::R,
+                Move::D2,
+                Move::RPrime,
+            ],
+            Self::LCorners => vec![
+                Move::B,
+                Move::RPrime,
+                Move::BPrime,
+                Move::Rw,
+                Move::D,
+                Move::R,
+                Move::DPrime,
+                Move::RwPrime,
+            ],
+            Self::Pi => vec![
+                Move::R,
+                Move::D2,
+                Move::R2,
+                Move::DPrime,
+                Move::R2,
+                Move::DPrime,
+                Move::R2,
+                Move::D2,
+                Move::R,
+            ],
+            Self::Sune => vec![
+                Move::R,
+                Move::D,
+                Move::RPrime,
+                Move::D,
+                Move::R,
+                Move::D2,
+                Move::RPrime,
+            ],
+            Self::T => vec![
+                Move::Rw,
+                Move::D,
+                Move::RPrime,
+                Move::DPrime,
+                Move::RwPrime,
+                Move::B,
+                Move::R,
+                Move::BPrime,
+            ],
+            Self::U => vec![
+                Move::R2,
+                Move::U,
+                Move::RPrime,
+                Move::D2,
+                Move::R,
+                Move::UPrime,
+                Move::RPrime,
+                Move::D2,
+                Move::RPrime,
+            ],
         }
     }
 }
@@ -562,6 +841,197 @@ impl LastLayerCornerPositionSolver {
 
 pub struct LastLayerCornerOrientationSolver;
 
+pub struct BeginnerOllSolver;
+
+impl BeginnerOllSolver {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
+        if !cube.is_yellow_cross_complete() || cube.is_oll_complete() {
+            return None;
+        }
+
+        for trigger in last_layer_corner_orientation_actions() {
+            for layer_turn in [Move::D, Move::DPrime] {
+                if let Some(solution) = search_corner_twists(
+                    cube,
+                    &trigger,
+                    layer_turn,
+                    4,
+                    &mut Vec::new(),
+                    Cube::is_oll_complete,
+                ) {
+                    return Some(SolveStep::new(SkillId::BeginnerOllOrientation, solution));
+                }
+            }
+        }
+
+        None
+    }
+}
+
+pub struct OllSolver;
+
+impl OllSolver {
+    pub fn next_step(cube: &Cube, learned: &[OllAlgorithm]) -> Option<SolveStep> {
+        if !cube.is_second_layer_complete() || cube.is_oll_complete() {
+            return None;
+        }
+
+        let setups = [vec![], vec![Move::D], vec![Move::DPrime], vec![Move::D2]];
+        let mut best: Option<(OllAlgorithm, Vec<Move>)> = None;
+        for &algorithm in learned {
+            if algorithm.orients_edges() == cube.is_yellow_cross_complete() {
+                continue;
+            }
+
+            let algorithm_moves = algorithm.moves();
+            for setup in &setups {
+                let moves: Vec<_> = setup
+                    .iter()
+                    .chain(algorithm_moves.iter())
+                    .copied()
+                    .collect();
+                let mut attempt = cube.clone();
+                for &move_to_make in &moves {
+                    attempt.execute_move(move_to_make);
+                }
+                let target_complete = if algorithm.orients_edges() {
+                    attempt.is_yellow_cross_complete()
+                } else {
+                    attempt.is_oll_complete()
+                };
+                if target_complete
+                    && best
+                        .as_ref()
+                        .is_none_or(|(_, best_moves)| moves.len() < best_moves.len())
+                {
+                    best = Some((algorithm, moves));
+                }
+            }
+        }
+
+        best.map(|(algorithm, moves)| SolveStep::new(SkillId::Oll(algorithm), moves))
+    }
+}
+
+pub struct PllSolver;
+
+impl PllSolver {
+    pub fn next_step(cube: &Cube, learned: &[PllAlgorithm]) -> Option<SolveStep> {
+        if !cube.is_oll_complete() {
+            return None;
+        }
+
+        if let Some(alignment) = corner_alignment(cube) {
+            let aligned = execute_moves(cube, &alignment);
+            if aligned.is_solved() {
+                return Some(SolveStep::new(SkillId::AlignLastLayer, alignment));
+            }
+
+            return match_pll(
+                &aligned,
+                learned
+                    .iter()
+                    .copied()
+                    .filter(|pll| !pll.permutes_corners()),
+                Cube::is_solved,
+            )
+            .map(|(algorithm, mut moves)| {
+                let mut complete_moves = alignment;
+                complete_moves.append(&mut moves);
+                SolveStep::new(SkillId::Pll(algorithm), complete_moves)
+            });
+        }
+
+        match_pll(
+            cube,
+            learned.iter().copied().filter(|pll| pll.permutes_corners()),
+            |state| state.is_oll_complete() && corner_alignment(state).is_some(),
+        )
+        .map(|(algorithm, moves)| SolveStep::new(SkillId::Pll(algorithm), moves))
+    }
+}
+
+fn corner_alignment(cube: &Cube) -> Option<Vec<Move>> {
+    [vec![], vec![Move::D], vec![Move::DPrime], vec![Move::D2]]
+        .into_iter()
+        .find(|adjustment| {
+            execute_moves(cube, adjustment).positioned_last_layer_corner_count() == 4
+        })
+}
+
+fn match_pll(
+    cube: &Cube,
+    algorithms: impl Iterator<Item = PllAlgorithm>,
+    target: impl Fn(&Cube) -> bool,
+) -> Option<(PllAlgorithm, Vec<Move>)> {
+    let mut best = None;
+    for algorithm in algorithms {
+        for rotation in 0..4 {
+            let Some(moves) = rotate_algorithm_y(&algorithm.moves(), rotation) else {
+                continue;
+            };
+            if target(&execute_moves(cube, &moves))
+                && best
+                    .as_ref()
+                    .is_none_or(|(_, best_moves): &(PllAlgorithm, Vec<Move>)| {
+                        moves.len() < best_moves.len()
+                    })
+            {
+                best = Some((algorithm, moves));
+            }
+        }
+    }
+    best
+}
+
+fn rotate_algorithm_y(moves: &[Move], rotations: usize) -> Option<Vec<Move>> {
+    moves
+        .iter()
+        .copied()
+        .map(|move_to_make| rotate_move_y(move_to_make, rotations))
+        .collect()
+}
+
+fn rotate_move_y(move_to_make: Move, rotations: usize) -> Option<Move> {
+    if rotations == 0 || move_to_make.intersects(Move::U | Move::D) {
+        return Some(move_to_make);
+    }
+    if move_to_make.contains(Move::M) {
+        return Some(match rotations {
+            1 if move_to_make.is_double() => Move::S2,
+            1 if move_to_make.is_prime() => Move::S,
+            1 => Move::SPrime,
+            2 => move_to_make.inverse(),
+            3 if move_to_make.is_double() => Move::S2,
+            3 if move_to_make.is_prime() => Move::SPrime,
+            3 => Move::S,
+            _ => move_to_make,
+        });
+    }
+
+    let faces = [Move::R, Move::F, Move::L, Move::B];
+    let source = faces.iter().position(|face| move_to_make.contains(*face))?;
+    let mut rotated = faces[(source + rotations) % faces.len()];
+    if move_to_make.is_prime() {
+        rotated |= Move::Prime;
+    }
+    if move_to_make.is_double() {
+        rotated |= Move::Double;
+    }
+    if move_to_make.is_wide() {
+        rotated |= Move::Wide;
+    }
+    Some(rotated)
+}
+
+fn execute_moves(cube: &Cube, moves: &[Move]) -> Cube {
+    let mut result = cube.clone();
+    for &move_to_make in moves {
+        result.execute_move(move_to_make);
+    }
+    result
+}
+
 impl LastLayerCornerOrientationSolver {
     pub fn next_step(cube: &Cube) -> Option<SolveStep> {
         if !cube.are_last_layer_corners_positioned() || cube.is_solved() {
@@ -570,9 +1040,14 @@ impl LastLayerCornerOrientationSolver {
 
         for trigger in last_layer_corner_orientation_actions() {
             for layer_turn in [Move::D, Move::DPrime] {
-                if let Some(solution) =
-                    search_corner_twists(cube, &trigger, layer_turn, 4, &mut Vec::new())
-                {
+                if let Some(solution) = search_corner_twists(
+                    cube,
+                    &trigger,
+                    layer_turn,
+                    4,
+                    &mut Vec::new(),
+                    Cube::is_solved,
+                ) {
                     return Some(SolveStep::new(SkillId::OrientYellowCorners, solution));
                 }
             }
@@ -588,9 +1063,10 @@ fn search_corner_twists(
     layer_turn: Move,
     corners_remaining: usize,
     moves: &mut Vec<Move>,
+    is_complete: fn(&Cube) -> bool,
 ) -> Option<Vec<Move>> {
     if corners_remaining == 0 {
-        return cube.is_solved().then(|| moves.clone());
+        return is_complete(cube).then(|| moves.clone());
     }
 
     let mut twisted = cube.clone();
@@ -606,9 +1082,14 @@ fn search_corner_twists(
         let mut next = twisted.clone();
         next.execute_move(layer_turn);
         moves.push(layer_turn);
-        if let Some(solution) =
-            search_corner_twists(&next, trigger, layer_turn, corners_remaining - 1, moves)
-        {
+        if let Some(solution) = search_corner_twists(
+            &next,
+            trigger,
+            layer_turn,
+            corners_remaining - 1,
+            moves,
+            is_complete,
+        ) {
             return Some(solution);
         }
         moves.pop();
@@ -1077,6 +1558,214 @@ mod tests {
                 intuitive_moves <= beginner_moves,
                 "intuitive F2L used {intuitive_moves} moves versus {beginner_moves} beginner moves"
             );
+        }
+    }
+
+    #[test]
+    fn each_learned_pll_algorithm_recognizes_its_case() {
+        for algorithm in PllAlgorithm::ALL {
+            let mut cube = Cube::new();
+            for move_to_make in algorithm.moves().into_iter().rev() {
+                cube.execute_move(move_to_make.inverse());
+            }
+
+            assert!(
+                cube.is_second_layer_complete(),
+                "{} broke F2L",
+                algorithm.name()
+            );
+            if algorithm.permutes_corners() {
+                assert_eq!(
+                    cube.positioned_last_layer_corner_count(),
+                    2,
+                    "{} should represent one corner-swap case",
+                    algorithm.name()
+                );
+                assert_eq!(
+                    cube.last_layer_edge_count(),
+                    2,
+                    "{} should swap exactly one edge pair",
+                    algorithm.name()
+                );
+            } else {
+                let expected_positioned_edges = match algorithm {
+                    PllAlgorithm::Ua | PllAlgorithm::Ub => 1,
+                    PllAlgorithm::H | PllAlgorithm::Z => 0,
+                    PllAlgorithm::Headlights | PllAlgorithm::Diagonal => unreachable!(),
+                };
+                assert_eq!(
+                    cube.last_layer_edge_count(),
+                    expected_positioned_edges,
+                    "{} has the wrong edge permutation",
+                    algorithm.name()
+                );
+            }
+            assert!(
+                !cube.is_solved(),
+                "{} must not be an identity",
+                algorithm.name()
+            );
+            let step = PllSolver::next_step(&cube, &[algorithm])
+                .unwrap_or_else(|| panic!("{} did not recognize its case", algorithm.name()));
+            assert_eq!(step.skill, SkillId::Pll(algorithm));
+            for move_to_make in step.moves {
+                cube.execute_move(move_to_make);
+            }
+            assert!(cube.is_solved());
+        }
+    }
+
+    #[test]
+    fn each_pll_is_recognized_from_every_viewing_angle() {
+        for algorithm in PllAlgorithm::ALL {
+            for rotation in 0..4 {
+                let Some(case_moves) = rotate_algorithm_y(&algorithm.moves(), rotation) else {
+                    continue;
+                };
+                let mut cube = Cube::new();
+                for move_to_make in case_moves.into_iter().rev() {
+                    cube.execute_move(move_to_make.inverse());
+                }
+                for _ in 0..2 {
+                    if cube.is_solved() {
+                        break;
+                    }
+                    let step =
+                        PllSolver::next_step(&cube, &PllAlgorithm::ALL).unwrap_or_else(|| {
+                            panic!("{} missed viewing angle {rotation}", algorithm.name())
+                        });
+                    for move_to_make in step.moves {
+                        cube.execute_move(move_to_make);
+                    }
+                }
+                assert!(
+                    cube.is_solved(),
+                    "{} viewing angle {rotation} did not finish",
+                    algorithm.name()
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn each_learned_oll_algorithm_recognizes_its_case() {
+        for algorithm in OllAlgorithm::ALL {
+            let mut cube = Cube::new();
+            for move_to_make in algorithm.moves().into_iter().rev() {
+                cube.execute_move(move_to_make.inverse());
+            }
+
+            assert!(
+                cube.is_second_layer_complete(),
+                "{} broke F2L",
+                algorithm.name()
+            );
+            assert!(
+                !cube.is_oll_complete(),
+                "{} must change orientation",
+                algorithm.name()
+            );
+            let step = OllSolver::next_step(&cube, &[algorithm])
+                .unwrap_or_else(|| panic!("{} did not recognize its case", algorithm.name()));
+            assert_eq!(step.skill, SkillId::Oll(algorithm));
+            for move_to_make in step.moves {
+                cube.execute_move(move_to_make);
+            }
+            assert!(cube.is_oll_complete());
+        }
+    }
+
+    #[test]
+    fn a_complete_pll_repertoire_preempts_beginner_permutation() {
+        let scrambles = [
+            vec![Move::R, Move::U, Move::FPrime, Move::L, Move::D],
+            vec![Move::F, Move::R, Move::UPrime, Move::B, Move::LPrime],
+            vec![Move::DPrime, Move::BPrime, Move::R, Move::F, Move::U],
+            vec![Move::L, Move::FPrime, Move::D, Move::RPrime, Move::B],
+        ];
+
+        for scramble in scrambles {
+            let mut cube = Cube::new();
+            for move_to_make in scramble {
+                cube.execute_move(move_to_make);
+            }
+            build_second_layer(&mut cube);
+            build_yellow_cross(&mut cube);
+
+            let oll_step = BeginnerOllSolver::next_step(&cube)
+                .expect("beginner orientation should prepare PLL");
+            for move_to_make in oll_step.moves {
+                cube.execute_move(move_to_make);
+            }
+            assert!(cube.is_oll_complete());
+
+            let mut pll_steps = 0;
+            while !cube.is_solved() {
+                pll_steps += 1;
+                assert!(
+                    pll_steps <= 2,
+                    "learned PLL planner needed too many algorithms"
+                );
+                let step = PllSolver::next_step(&cube, &PllAlgorithm::ALL).unwrap_or_else(|| {
+                    panic!(
+                        "PLL missed case with {} corners and {} edges positioned",
+                        cube.positioned_last_layer_corner_count(),
+                        cube.last_layer_edge_count()
+                    )
+                });
+                for move_to_make in step.moves {
+                    cube.execute_move(move_to_make);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn learned_last_layer_policy_never_cycles() {
+        let mut random_state = 0x000d_d1e5_u32;
+
+        for scramble_index in 0..100 {
+            let mut cube = Cube::new();
+            for _ in 0..20 {
+                random_state = random_state
+                    .wrapping_mul(1_664_525)
+                    .wrapping_add(1_013_904_223);
+                cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
+            }
+            build_second_layer(&mut cube);
+            let learned_olls: Vec<_> = OllAlgorithm::ALL
+                .into_iter()
+                .enumerate()
+                .filter_map(|(index, algorithm)| {
+                    ((scramble_index >> index) & 1 == 1).then_some(algorithm)
+                })
+                .collect();
+
+            let mut visited = HashSet::new();
+            let mut trace = Vec::new();
+            for step_index in 0..20 {
+                if cube.is_solved() {
+                    break;
+                }
+                assert!(
+                    visited.insert(cube.state_key()),
+                    "last-layer policy cycled on scramble {scramble_index}, step {step_index}: {trace:?}"
+                );
+
+                let step = PllSolver::next_step(&cube, &PllAlgorithm::ALL)
+                    .or_else(|| OllSolver::next_step(&cube, &learned_olls))
+                    .or_else(|| BeginnerOllSolver::next_step(&cube))
+                    .or_else(|| LastLayerCornerOrientationSolver::next_step(&cube))
+                    .or_else(|| LastLayerCornerPositionSolver::next_step(&cube))
+                    .or_else(|| LastLayerEdgeSolver::next_step(&cube))
+                    .or_else(|| YellowCrossSolver::next_step(&cube))
+                    .expect("last-layer policy should find a step");
+                trace.push(format!("{} ({} moves)", step.name, step.moves.len()));
+                for move_to_make in step.moves {
+                    cube.execute_move(move_to_make);
+                }
+            }
+            assert!(cube.is_solved(), "scramble {scramble_index} did not finish");
         }
     }
 
