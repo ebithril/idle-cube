@@ -2,6 +2,7 @@ use crate::cube::Cube;
 use crate::moves::random_scramble;
 use crate::solver::{
     DaisySolver, DaisyToCrossSolver, FirstLayerCornerSolver, SecondLayerEdgeSolver,
+    YellowCrossSolver,
 };
 
 use macroquad::prelude::*;
@@ -70,8 +71,10 @@ impl Game {
             self.scramble_complete = true;
         }
 
-        if self.scramble_complete && self.cube.is_idle() && !self.cube.is_second_layer_complete() {
-            if let Some(step) = SecondLayerEdgeSolver::next_step(&self.cube) {
+        if self.scramble_complete && self.cube.is_idle() && !self.cube.is_yellow_cross_complete() {
+            if let Some(step) = YellowCrossSolver::next_step(&self.cube) {
+                self.cube.queue_moves(step);
+            } else if let Some(step) = SecondLayerEdgeSolver::next_step(&self.cube) {
                 self.cube.queue_moves(step);
             } else if let Some(step) = FirstLayerCornerSolver::next_step(&self.cube) {
                 self.cube.queue_moves(step);
@@ -147,6 +150,13 @@ impl Game {
             150.0,
             30.0,
             WHITE,
+        );
+        draw_text(
+            &format!("YELLOW CROSS: {}/4", self.cube.yellow_cross_count()),
+            10.0,
+            180.0,
+            30.0,
+            YELLOW,
         );
         draw_fps();
 

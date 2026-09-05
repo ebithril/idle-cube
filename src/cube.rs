@@ -408,6 +408,24 @@ impl Cube {
         self.is_first_layer_complete() && self.second_layer_edge_count() == 4
     }
 
+    pub fn yellow_cross_count(&self) -> usize {
+        const YELLOW_EDGE_POSITIONS: [(usize, usize, usize); 4] =
+            [(1, 0, 0), (0, 0, 1), (2, 0, 1), (1, 0, 2)];
+
+        YELLOW_EDGE_POSITIONS
+            .into_iter()
+            .filter(|&(x, y, z)| {
+                let piece = &self.pieces[get_idx(x, y, z)];
+                is_yellow_edge(piece)
+                    && piece.orientation.transform(Direction::Down) == Direction::Down
+            })
+            .count()
+    }
+
+    pub fn is_yellow_cross_complete(&self) -> bool {
+        self.is_second_layer_complete() && self.yellow_cross_count() == 4
+    }
+
     pub(crate) fn second_layer_edges_on_down_count(&self) -> usize {
         self.pieces
             .iter()
@@ -738,6 +756,11 @@ fn is_white_edge(piece: &Piece) -> bool {
 fn is_second_layer_edge(piece: &Piece) -> bool {
     let (x, y, z) = get_3d_index(piece.home_index);
     y == 1 && x != 1 && z != 1
+}
+
+fn is_yellow_edge(piece: &Piece) -> bool {
+    let (x, y, z) = get_3d_index(piece.home_index);
+    y == 0 && [x, y, z].into_iter().filter(|&axis| axis != 1).count() == 2
 }
 
 fn get_idx(x: usize, y: usize, z: usize) -> usize {

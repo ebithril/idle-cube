@@ -194,6 +194,83 @@ impl SecondLayerEdgeSolver {
     }
 }
 
+pub struct YellowCrossSolver;
+
+impl YellowCrossSolver {
+    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+        if !cube.is_second_layer_complete() || cube.is_yellow_cross_complete() {
+            return None;
+        }
+
+        let completed_edges = cube.yellow_cross_count();
+        let mut actions = Vec::new();
+        for setup in [vec![], vec![Move::D], vec![Move::DPrime], vec![Move::D2]] {
+            for algorithm in yellow_cross_algorithms() {
+                let step: Vec<_> = setup.iter().chain(algorithm.iter()).copied().collect();
+                actions.push(step);
+            }
+        }
+
+        let mut pending = VecDeque::from([(cube.clone(), Vec::new())]);
+        let mut visited = HashSet::from([cube.state_key()]);
+        while let Some((state, algorithm)) = pending.pop_front() {
+            if algorithm.len() == 2 {
+                continue;
+            }
+
+            for action in &actions {
+                let mut next = state.clone();
+                for &move_to_make in action {
+                    next.execute_move(move_to_make);
+                }
+                if !next.is_second_layer_complete() || !visited.insert(next.state_key()) {
+                    continue;
+                }
+
+                let mut next_algorithm = algorithm.clone();
+                next_algorithm.push(action.clone());
+                if next.yellow_cross_count() > completed_edges {
+                    return Some(next_algorithm.into_iter().flatten().collect());
+                }
+                pending.push_back((next, next_algorithm));
+            }
+        }
+
+        None
+    }
+}
+
+fn yellow_cross_algorithms() -> Vec<Vec<Move>> {
+    let adjacent_faces = [
+        (Move::R, Move::F),
+        (Move::F, Move::L),
+        (Move::L, Move::B),
+        (Move::B, Move::R),
+    ];
+    let mut algorithms = Vec::new();
+
+    for (first, second) in adjacent_faces {
+        for (first, second) in [(first, second), (second, first)] {
+            for first in [first, first.inverse()] {
+                for second in [second, second.inverse()] {
+                    for down in [Move::D, Move::DPrime] {
+                        algorithms.push(vec![
+                            first,
+                            second,
+                            down,
+                            second.inverse(),
+                            down.inverse(),
+                            first.inverse(),
+                        ]);
+                    }
+                }
+            }
+        }
+    }
+
+    algorithms
+}
+
 fn second_layer_insertions() -> Vec<Vec<Move>> {
     let adjacent_faces = [
         (Move::R, Move::F),
@@ -326,6 +403,20 @@ mod tests {
             assert!(attempts < 20, "second-layer solver stopped making progress");
             let step = SecondLayerEdgeSolver::next_step(cube)
                 .expect("a second-layer edge step should exist");
+            for move_to_make in step {
+                cube.execute_move(move_to_make);
+            }
+        }
+    }
+
+    fn build_yellow_cross(cube: &mut Cube) {
+        build_second_layer(cube);
+        let mut attempts = 0;
+        while !cube.is_yellow_cross_complete() {
+            attempts += 1;
+            assert!(attempts < 5, "yellow-cross solver stopped making progress");
+            let step =
+                YellowCrossSolver::next_step(cube).expect("a yellow-cross step should exist");
             for move_to_make in step {
                 cube.execute_move(move_to_make);
             }
@@ -466,6 +557,40 @@ mod tests {
                 cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
             }
             build_second_layer(&mut cube);
+        }
+    }
+
+    #[test]
+    fn scrambled_cube_can_build_the_yellow_cross() {
+        let mut cube = Cube::new();
+        for move_to_make in [
+            Move::R,
+            Move::U2,
+            Move::FPrime,
+            Move::L,
+            Move::D2,
+            Move::BPrime,
+        ] {
+            cube.execute_move(move_to_make);
+        }
+
+        build_yellow_cross(&mut cube);
+        assert!(cube.is_yellow_cross_complete());
+    }
+
+    #[test]
+    fn deterministic_scrambles_can_build_the_yellow_cross() {
+        let mut random_state = 0xface_feed_u32;
+
+        for _ in 0..20 {
+            let mut cube = Cube::new();
+            for _ in 0..20 {
+                random_state = random_state
+                    .wrapping_mul(1_664_525)
+                    .wrapping_add(1_013_904_223);
+                cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
+            }
+            build_yellow_cross(&mut cube);
         }
     }
 }
