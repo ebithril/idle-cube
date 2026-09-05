@@ -2,7 +2,8 @@ use crate::cube::Cube;
 use crate::moves::random_scramble;
 use crate::solver::{
     DaisySolver, DaisyToCrossSolver, FirstLayerCornerSolver, LastLayerCornerOrientationSolver,
-    LastLayerCornerPositionSolver, LastLayerEdgeSolver, SecondLayerEdgeSolver, YellowCrossSolver,
+    LastLayerCornerPositionSolver, LastLayerEdgeSolver, SecondLayerEdgeSolver, SolveStep,
+    YellowCrossSolver,
 };
 
 use macroquad::prelude::*;
@@ -18,6 +19,7 @@ const VERTEX_SHADER: &str = include_str!("../cube_shader.vert");
 struct SolveResult {
     time: f32,
     moves: u32,
+    recognition_time: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -30,6 +32,7 @@ struct SolveAverage {
 struct SolveTiming {
     elapsed: Option<f32>,
     moves: u32,
+    recognition_time: f32,
     last: Option<SolveResult>,
     best: Option<SolveResult>,
     history: VecDeque<SolveResult>,
@@ -39,13 +42,17 @@ impl SolveTiming {
     fn start(&mut self) {
         self.elapsed = Some(0.0);
         self.moves = 0;
+        self.recognition_time = 0.0;
     }
 
-    fn update(&mut self, dt: f32, completed_move: bool) {
+    fn update(&mut self, dt: f32, completed_move: bool, recognizing: bool) {
         if let Some(elapsed) = &mut self.elapsed {
             *elapsed += dt;
             if completed_move {
                 self.moves += 1;
+            }
+            if recognizing {
+                self.recognition_time += dt;
             }
         }
     }
@@ -57,6 +64,7 @@ impl SolveTiming {
         let result = SolveResult {
             time,
             moves: self.moves,
+            recognition_time: self.recognition_time,
         };
         self.last = Some(result);
         if self.best.is_none_or(|best| result.time < best.time) {
@@ -89,6 +97,8 @@ pub struct Game {
     material: Material,
     scramble_complete: bool,
     solve_timing: SolveTiming,
+    pending_step: Option<SolveStep>,
+    recognition_remaining: f32,
 }
 
 impl Game {
@@ -126,6 +136,8 @@ impl Game {
             material,
             scramble_complete: false,
             solve_timing: SolveTiming::default(),
+            pending_step: None,
+            recognition_remaining: 0.0,
         }
     }
 
@@ -139,10 +151,12 @@ impl Game {
     fn update(&mut self) {
         let dt = get_frame_time();
         let was_solving = self.scramble_complete && self.solve_timing.elapsed.is_some();
+        let was_recognizing = self.pending_step.is_some();
         let completed_move = self.cube.update(dt);
 
         if was_solving {
-            self.solve_timing.update(dt, completed_move.is_some());
+            self.solve_timing
+                .update(dt, completed_move.is_some(), was_recognizing);
             if self.cube.is_idle() && self.cube.is_solved() {
                 self.solve_timing.finish();
                 self.queue_scramble();
@@ -155,31 +169,37 @@ impl Game {
             self.solve_timing.start();
         }
 
-        if self.scramble_complete && self.cube.is_idle() && !self.cube.is_solved() {
-            if let Some(step) = LastLayerCornerOrientationSolver::next_step(&self.cube) {
-                self.cube.queue_moves(step);
-            } else if let Some(step) = LastLayerCornerPositionSolver::next_step(&self.cube) {
-                self.cube.queue_moves(step);
-            } else if let Some(step) = LastLayerEdgeSolver::next_step(&self.cube) {
-                self.cube.queue_moves(step);
-            } else if let Some(step) = YellowCrossSolver::next_step(&self.cube) {
-                self.cube.queue_moves(step);
-            } else if let Some(step) = SecondLayerEdgeSolver::next_step(&self.cube) {
-                self.cube.queue_moves(step);
-            } else if let Some(step) = FirstLayerCornerSolver::next_step(&self.cube) {
-                self.cube.queue_moves(step);
-            } else if let Some(step) = DaisyToCrossSolver::next_step(&self.cube) {
-                self.cube.queue_moves(step);
-            } else if let Some(step) = DaisySolver::next_step(&self.cube) {
-                self.cube.queue_moves(step);
+        if self.pending_step.is_some() {
+            self.recognition_remaining -= dt;
+            if self.recognition_remaining <= 0.0 {
+                let step = self.pending_step.take().expect("the step is pending");
+                self.cube.queue_moves(step.moves);
+            }
+        } else if self.scramble_complete && self.cube.is_idle() && !self.cube.is_solved() {
+            if let Some(step) = self.select_next_step() {
+                self.recognition_remaining = recognition_time(step.skill);
+                self.pending_step = Some(step);
             }
         }
+    }
+
+    fn select_next_step(&self) -> Option<SolveStep> {
+        LastLayerCornerOrientationSolver::next_step(&self.cube)
+            .or_else(|| LastLayerCornerPositionSolver::next_step(&self.cube))
+            .or_else(|| LastLayerEdgeSolver::next_step(&self.cube))
+            .or_else(|| YellowCrossSolver::next_step(&self.cube))
+            .or_else(|| SecondLayerEdgeSolver::next_step(&self.cube))
+            .or_else(|| FirstLayerCornerSolver::next_step(&self.cube))
+            .or_else(|| DaisyToCrossSolver::next_step(&self.cube))
+            .or_else(|| DaisySolver::next_step(&self.cube))
     }
 
     fn queue_scramble(&mut self) {
         let mut rng = ::rand::rng();
         self.cube.queue_moves(random_scramble(&mut rng, 20));
         self.scramble_complete = false;
+        self.pending_step = None;
+        self.recognition_remaining = 0.0;
     }
 
     async fn render(&self) {
@@ -216,7 +236,10 @@ impl Game {
         set_default_camera();
         if let Some(elapsed) = self.solve_timing.elapsed {
             draw_text(
-                &format!("TIME: {elapsed:.2}s  MOVES: {}", self.solve_timing.moves),
+                &format!(
+                    "TIME: {elapsed:.2}s  MOVES: {}  RECOGNITION: {:.2}s",
+                    self.solve_timing.moves, self.solve_timing.recognition_time
+                ),
                 10.0,
                 30.0,
                 30.0,
@@ -227,7 +250,10 @@ impl Game {
         }
         if let Some(last) = self.solve_timing.last {
             draw_text(
-                &format!("LAST: {:.2}s / {} moves", last.time, last.moves),
+                &format!(
+                    "LAST: {:.2}s / {} moves / {:.2}s recognition",
+                    last.time, last.moves, last.recognition_time
+                ),
                 10.0,
                 60.0,
                 30.0,
@@ -259,6 +285,10 @@ impl Game {
     }
 }
 
+fn recognition_time(_skill: crate::solver::SkillId) -> f32 {
+    0.5
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,15 +298,16 @@ mod tests {
         let mut timing = SolveTiming::default();
 
         timing.start();
-        timing.update(0.5, true);
-        timing.update(0.25, false);
+        timing.update(0.5, true, true);
+        timing.update(0.25, false, false);
         timing.finish();
         assert_eq!(timing.last.unwrap().moves, 1);
         assert_eq!(timing.last.unwrap().time, 0.75);
+        assert_eq!(timing.last.unwrap().recognition_time, 0.5);
         assert_eq!(timing.best.unwrap().time, 0.75);
 
         timing.start();
-        timing.update(1.0, true);
+        timing.update(1.0, true, false);
         timing.finish();
         assert_eq!(timing.last.unwrap().time, 1.0);
         assert_eq!(timing.best.unwrap().time, 0.75);
@@ -288,7 +319,7 @@ mod tests {
 
         for seconds in 1..=5 {
             timing.start();
-            timing.update(seconds as f32, true);
+            timing.update(seconds as f32, true, false);
             timing.finish();
         }
 
@@ -305,7 +336,7 @@ mod tests {
 
         for seconds in 1..=101 {
             timing.start();
-            timing.update(seconds as f32, false);
+            timing.update(seconds as f32, false, false);
             timing.finish();
         }
 

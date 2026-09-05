@@ -26,10 +26,54 @@ const MOVES: [Move; 18] = [
 const MAX_DAISY_STEP_LENGTH: usize = 5;
 const MAX_CORNER_STEP_LENGTH: usize = 4;
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum SkillId {
+    BuildDaisy,
+    DaisyToCross,
+    BeginnerCornerInsertion,
+    BeginnerSecondLayerInsertion,
+    YellowCross,
+    PermuteYellowEdges,
+    PositionYellowCorners,
+    OrientYellowCorners,
+}
+
+impl SkillId {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::BuildDaisy => "Build daisy",
+            Self::DaisyToCross => "Daisy to cross",
+            Self::BeginnerCornerInsertion => "Beginner corner insertion",
+            Self::BeginnerSecondLayerInsertion => "Beginner second-layer insertion",
+            Self::YellowCross => "Yellow cross",
+            Self::PermuteYellowEdges => "Permute yellow edges",
+            Self::PositionYellowCorners => "Position yellow corners",
+            Self::OrientYellowCorners => "Orient yellow corners",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SolveStep {
+    pub skill: SkillId,
+    pub name: &'static str,
+    pub moves: Vec<Move>,
+}
+
+impl SolveStep {
+    fn new(skill: SkillId, moves: Vec<Move>) -> Self {
+        Self {
+            skill,
+            name: skill.name(),
+            moves,
+        }
+    }
+}
+
 pub struct DaisySolver;
 
 impl DaisySolver {
-    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
         if cube.is_daisy_complete() {
             return None;
         }
@@ -55,7 +99,7 @@ impl DaisySolver {
                 next_algorithm.push(move_to_make);
 
                 if next.daisy_count() > completed_petals {
-                    return Some(next_algorithm);
+                    return Some(SolveStep::new(SkillId::BuildDaisy, next_algorithm));
                 }
 
                 pending.push_back((next, next_algorithm));
@@ -69,7 +113,7 @@ impl DaisySolver {
 pub struct DaisyToCrossSolver;
 
 impl DaisyToCrossSolver {
-    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
         if cube.is_white_cross_complete() || cube.daisy_count() + cube.white_cross_count() != 4 {
             return None;
         }
@@ -83,18 +127,18 @@ impl DaisyToCrossSolver {
 
         for (x, y, z, position_side, insertion) in DAISY_POSITIONS {
             if cube.white_edge_home_side_at(x, y, z) == Some(position_side) {
-                return Some(vec![insertion]);
+                return Some(SolveStep::new(SkillId::DaisyToCross, vec![insertion]));
             }
         }
 
-        Some(vec![Move::D])
+        Some(SolveStep::new(SkillId::DaisyToCross, vec![Move::D]))
     }
 }
 
 pub struct FirstLayerCornerSolver;
 
 impl FirstLayerCornerSolver {
-    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
         if !cube.is_white_cross_complete() || cube.is_first_layer_complete() {
             return None;
         }
@@ -103,7 +147,8 @@ impl FirstLayerCornerSolver {
         let (target_corner, first_side, second_side) = cube.first_unsolved_layer_corner_sides()?;
 
         if cube.piece_layer(target_corner) == 2 {
-            return find_corner_extraction(cube, target_corner, completed_corners);
+            return find_corner_extraction(cube, target_corner, completed_corners)
+                .map(|moves| SolveStep::new(SkillId::BeginnerCornerInsertion, moves));
         }
 
         let (current_x, _, current_z) = cube.piece_position(target_corner);
@@ -116,7 +161,10 @@ impl FirstLayerCornerSolver {
                 }
                 let (x, _, z) = adjusted.piece_position(target_corner);
                 if (x, z) == (home_x, home_z) {
-                    return Some(adjustment.to_vec());
+                    return Some(SolveStep::new(
+                        SkillId::BeginnerCornerInsertion,
+                        adjustment.to_vec(),
+                    ));
                 }
             }
         }
@@ -144,7 +192,10 @@ impl FirstLayerCornerSolver {
                             break;
                         }
                         if attempt.is_piece_solved(target_corner) {
-                            return Some(repeated_trigger);
+                            return Some(SolveStep::new(
+                                SkillId::BeginnerCornerInsertion,
+                                repeated_trigger,
+                            ));
                         }
                     }
                 }
@@ -158,7 +209,7 @@ impl FirstLayerCornerSolver {
 pub struct SecondLayerEdgeSolver;
 
 impl SecondLayerEdgeSolver {
-    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
         if !cube.is_first_layer_complete() || cube.is_second_layer_complete() {
             return None;
         }
@@ -181,7 +232,10 @@ impl SecondLayerEdgeSolver {
                     continue;
                 }
                 if attempt.second_layer_edge_count() > completed_edges {
-                    return Some(algorithm);
+                    return Some(SolveStep::new(
+                        SkillId::BeginnerSecondLayerInsertion,
+                        algorithm,
+                    ));
                 }
                 if attempt.second_layer_edges_on_down_count() > edges_on_down && ejection.is_none()
                 {
@@ -190,14 +244,14 @@ impl SecondLayerEdgeSolver {
             }
         }
 
-        ejection
+        ejection.map(|moves| SolveStep::new(SkillId::BeginnerSecondLayerInsertion, moves))
     }
 }
 
 pub struct YellowCrossSolver;
 
 impl YellowCrossSolver {
-    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
         if !cube.is_second_layer_complete() || cube.is_yellow_cross_complete() {
             return None;
         }
@@ -230,7 +284,10 @@ impl YellowCrossSolver {
                 let mut next_algorithm = algorithm.clone();
                 next_algorithm.push(action.clone());
                 if next.yellow_cross_count() > completed_edges {
-                    return Some(next_algorithm.into_iter().flatten().collect());
+                    return Some(SolveStep::new(
+                        SkillId::YellowCross,
+                        next_algorithm.into_iter().flatten().collect(),
+                    ));
                 }
                 pending.push_back((next, next_algorithm));
             }
@@ -243,7 +300,7 @@ impl YellowCrossSolver {
 pub struct LastLayerEdgeSolver;
 
 impl LastLayerEdgeSolver {
-    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
         if !cube.is_yellow_cross_complete() || cube.are_last_layer_edges_complete() {
             return None;
         }
@@ -281,7 +338,10 @@ impl LastLayerEdgeSolver {
                 let mut next_algorithms = algorithms.clone();
                 next_algorithms.push(action.clone());
                 if next.last_layer_edge_count() > completed_edges {
-                    return Some(next_algorithms.into_iter().flatten().collect());
+                    return Some(SolveStep::new(
+                        SkillId::PermuteYellowEdges,
+                        next_algorithms.into_iter().flatten().collect(),
+                    ));
                 }
                 pending.push_back((next, next_algorithms));
             }
@@ -294,7 +354,7 @@ impl LastLayerEdgeSolver {
 pub struct LastLayerCornerPositionSolver;
 
 impl LastLayerCornerPositionSolver {
-    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
         if !cube.are_last_layer_edges_complete() || cube.are_last_layer_corners_positioned() {
             return None;
         }
@@ -321,7 +381,10 @@ impl LastLayerCornerPositionSolver {
                 let mut next_algorithms = algorithms.clone();
                 next_algorithms.push(action.clone());
                 if next.positioned_last_layer_corner_count() > positioned_corners {
-                    return Some(next_algorithms.into_iter().flatten().collect());
+                    return Some(SolveStep::new(
+                        SkillId::PositionYellowCorners,
+                        next_algorithms.into_iter().flatten().collect(),
+                    ));
                 }
                 pending.push_back((next, next_algorithms));
             }
@@ -334,7 +397,7 @@ impl LastLayerCornerPositionSolver {
 pub struct LastLayerCornerOrientationSolver;
 
 impl LastLayerCornerOrientationSolver {
-    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
         if !cube.are_last_layer_corners_positioned() || cube.is_solved() {
             return None;
         }
@@ -344,7 +407,7 @@ impl LastLayerCornerOrientationSolver {
                 if let Some(solution) =
                     search_corner_twists(cube, &trigger, layer_turn, 4, &mut Vec::new())
                 {
-                    return Some(solution);
+                    return Some(SolveStep::new(SkillId::OrientYellowCorners, solution));
                 }
             }
         }
@@ -578,7 +641,7 @@ mod tests {
     fn build_daisy(cube: &mut Cube) {
         while !cube.is_daisy_complete() {
             let step = DaisySolver::next_step(cube).expect("a daisy step should exist");
-            for move_to_make in step {
+            for move_to_make in step.moves {
                 cube.execute_move(move_to_make);
             }
         }
@@ -589,7 +652,7 @@ mod tests {
         while !cube.is_white_cross_complete() {
             let step =
                 DaisyToCrossSolver::next_step(cube).expect("a daisy-to-cross step should exist");
-            for move_to_make in step {
+            for move_to_make in step.moves {
                 cube.execute_move(move_to_make);
             }
         }
@@ -603,7 +666,7 @@ mod tests {
             assert!(attempts < 50, "corner solver stopped making progress");
             let step = FirstLayerCornerSolver::next_step(cube)
                 .expect("a first-layer corner step should exist");
-            for move_to_make in step {
+            for move_to_make in step.moves {
                 cube.execute_move(move_to_make);
             }
         }
@@ -617,7 +680,7 @@ mod tests {
             assert!(attempts < 20, "second-layer solver stopped making progress");
             let step = SecondLayerEdgeSolver::next_step(cube)
                 .expect("a second-layer edge step should exist");
-            for move_to_make in step {
+            for move_to_make in step.moves {
                 cube.execute_move(move_to_make);
             }
         }
@@ -631,7 +694,7 @@ mod tests {
             assert!(attempts < 5, "yellow-cross solver stopped making progress");
             let step =
                 YellowCrossSolver::next_step(cube).expect("a yellow-cross step should exist");
-            for move_to_make in step {
+            for move_to_make in step.moves {
                 cube.execute_move(move_to_make);
             }
         }
@@ -648,7 +711,7 @@ mod tests {
             );
             let step =
                 LastLayerEdgeSolver::next_step(cube).expect("a last-layer edge step should exist");
-            for move_to_make in step {
+            for move_to_make in step.moves {
                 cube.execute_move(move_to_make);
             }
         }
@@ -665,7 +728,7 @@ mod tests {
             );
             let step = LastLayerCornerPositionSolver::next_step(cube)
                 .expect("a corner-position step should exist");
-            for move_to_make in step {
+            for move_to_make in step.moves {
                 cube.execute_move(move_to_make);
             }
         }
@@ -676,7 +739,7 @@ mod tests {
         if !cube.is_solved() {
             let step = LastLayerCornerOrientationSolver::next_step(cube)
                 .expect("a corner-orientation step should exist");
-            for move_to_make in step {
+            for move_to_make in step.moves {
                 cube.execute_move(move_to_make);
             }
         }
@@ -687,6 +750,15 @@ mod tests {
         let mut cube = Cube::new();
         build_daisy(&mut cube);
         assert!(cube.is_daisy_complete());
+    }
+
+    #[test]
+    fn solve_steps_identify_the_skill_that_produced_them() {
+        let step = DaisySolver::next_step(&Cube::new()).expect("a solved cube needs a daisy step");
+
+        assert_eq!(step.skill, SkillId::BuildDaisy);
+        assert_eq!(step.name, "Build daisy");
+        assert!(!step.moves.is_empty());
     }
 
     #[test]

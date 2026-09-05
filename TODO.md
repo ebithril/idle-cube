@@ -25,7 +25,7 @@
 - [ ] Define a common technique interface for recognizing a case and returning the next short move sequence.
 - [ ] Only recognize and select another technique after the current sequence finishes animating.
 - [ ] Prefer the first applicable technique so faster and more specific algorithms can be placed before fallbacks.
-- [ ] Include useful metadata with a solve step, such as its name and moves.
+- [x] Include useful metadata with a solve step, such as its skill identity, name, and moves.
 
 ## 3. Daisy milestone
 
@@ -58,7 +58,8 @@
 - [ ] Add individual OLL and PLL cases above the beginner fallbacks as they are learned.
 - [x] Track move count and solve time.
 - [x] Track rolling AO3, AO5, AO20, and AO100 statistics.
-- [ ] Track recognition time and turning speed.
+- [x] Add fixed recognition pauses between solve steps and track recognition time.
+- [ ] Add per-skill recognition proficiency and turning speed.
 - [ ] Add persistence for progression and settings.
 
 ## Later
