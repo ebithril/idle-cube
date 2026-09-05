@@ -444,6 +444,23 @@ impl Cube {
         self.is_yellow_cross_complete() && self.last_layer_edge_count() == 4
     }
 
+    pub fn positioned_last_layer_corner_count(&self) -> usize {
+        const CORNER_POSITIONS: [(usize, usize, usize); 4] =
+            [(0, 0, 0), (2, 0, 0), (0, 0, 2), (2, 0, 2)];
+
+        CORNER_POSITIONS
+            .into_iter()
+            .filter(|&(x, y, z)| {
+                let position = get_idx(x, y, z);
+                self.pieces[position].home_index == position
+            })
+            .count()
+    }
+
+    pub fn are_last_layer_corners_positioned(&self) -> bool {
+        self.are_last_layer_edges_complete() && self.positioned_last_layer_corner_count() == 4
+    }
+
     pub(crate) fn second_layer_edges_on_down_count(&self) -> usize {
         self.pieces
             .iter()
