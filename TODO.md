@@ -59,7 +59,8 @@
 - [x] Track move count and solve time.
 - [x] Track rolling AO3, AO5, AO20, and AO100 statistics.
 - [x] Add fixed recognition pauses between solve steps and track recognition time.
-- [ ] Add per-skill recognition proficiency and turning speed.
+- [x] Add per-skill recognition and turning proficiency.
+- [ ] Add global maximum TPS upgrades.
 - [ ] Add persistence for progression and settings.
 
 ## Later

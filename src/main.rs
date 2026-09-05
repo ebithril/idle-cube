@@ -1,6 +1,7 @@
 mod cube;
 mod game;
 mod moves;
+mod progression;
 mod solver;
 
 use game::*;

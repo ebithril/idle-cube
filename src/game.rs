@@ -1,5 +1,6 @@
 use crate::cube::Cube;
 use crate::moves::random_scramble;
+use crate::progression::PlayerSkills;
 use crate::solver::{
     DaisySolver, DaisyToCrossSolver, FirstLayerCornerSolver, LastLayerCornerOrientationSolver,
     LastLayerCornerPositionSolver, LastLayerEdgeSolver, SecondLayerEdgeSolver, SolveStep,
@@ -99,11 +100,15 @@ pub struct Game {
     solve_timing: SolveTiming,
     pending_step: Option<SolveStep>,
     recognition_remaining: f32,
+    active_skill: Option<crate::solver::SkillId>,
+    player_skills: PlayerSkills,
 }
 
 impl Game {
     pub fn new() -> Self {
+        let player_skills = PlayerSkills::default();
         let mut cube = Cube::new();
+        cube.set_tps(player_skills.max_tps());
 
         let mut rng = ::rand::rng();
         cube.queue_moves(random_scramble(&mut rng, 20));
@@ -138,6 +143,8 @@ impl Game {
             solve_timing: SolveTiming::default(),
             pending_step: None,
             recognition_remaining: 0.0,
+            active_skill: None,
+            player_skills,
         }
     }
 
@@ -153,6 +160,12 @@ impl Game {
         let was_solving = self.scramble_complete && self.solve_timing.elapsed.is_some();
         let was_recognizing = self.pending_step.is_some();
         let completed_move = self.cube.update(dt);
+
+        if completed_move.is_some() && self.cube.is_idle() {
+            if let Some(skill) = self.active_skill.take() {
+                self.player_skills.practice_turning(skill);
+            }
+        }
 
         if was_solving {
             self.solve_timing
@@ -173,11 +186,15 @@ impl Game {
             self.recognition_remaining -= dt;
             if self.recognition_remaining <= 0.0 {
                 let step = self.pending_step.take().expect("the step is pending");
+                self.player_skills.practice_recognition(step.skill);
+                self.cube
+                    .set_tps(self.player_skills.turning_tps(step.skill));
+                self.active_skill = Some(step.skill);
                 self.cube.queue_moves(step.moves);
             }
         } else if self.scramble_complete && self.cube.is_idle() && !self.cube.is_solved() {
             if let Some(step) = self.select_next_step() {
-                self.recognition_remaining = recognition_time(step.skill);
+                self.recognition_remaining = self.player_skills.recognition_time(step.skill);
                 self.pending_step = Some(step);
             }
         }
@@ -196,10 +213,12 @@ impl Game {
 
     fn queue_scramble(&mut self) {
         let mut rng = ::rand::rng();
+        self.cube.set_tps(self.player_skills.max_tps());
         self.cube.queue_moves(random_scramble(&mut rng, 20));
         self.scramble_complete = false;
         self.pending_step = None;
         self.recognition_remaining = 0.0;
+        self.active_skill = None;
     }
 
     async fn render(&self) {
@@ -283,10 +302,6 @@ impl Game {
         }
         next_frame().await
     }
-}
-
-fn recognition_time(_skill: crate::solver::SkillId) -> f32 {
-    0.5
 }
 
 #[cfg(test)]

@@ -335,6 +335,11 @@ impl Cube {
         self.alg.is_empty()
     }
 
+    pub fn set_tps(&mut self, tps: f32) {
+        assert!(tps > 0.0, "TPS must be positive");
+        self.move_time = 1.0 / tps;
+    }
+
     pub fn daisy_count(&self) -> usize {
         const DAISY_POSITIONS: [(usize, usize, usize); 4] =
             [(1, 0, 0), (0, 0, 1), (2, 0, 1), (1, 0, 2)];
