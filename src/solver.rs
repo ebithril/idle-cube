@@ -1,6 +1,7 @@
 use crate::cube::{Cube, Direction};
 use crate::moves::Move;
-use std::collections::{HashSet, VecDeque};
+use std::cmp::Ordering;
+use std::collections::{BinaryHeap, HashMap, HashSet, VecDeque};
 
 const MOVES: [Move; 18] = [
     Move::U,
@@ -25,6 +26,7 @@ const MOVES: [Move; 18] = [
 
 const MAX_DAISY_STEP_LENGTH: usize = 5;
 const MAX_DIRECT_CROSS_STEP_LENGTH: usize = 7;
+const MAX_F2L_STEP_LENGTH: usize = 18;
 const MAX_CORNER_STEP_LENGTH: usize = 4;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -32,6 +34,7 @@ pub enum SkillId {
     BuildDaisy,
     DaisyToCross,
     DirectCross,
+    IntuitiveF2L,
     BeginnerCornerInsertion,
     BeginnerSecondLayerInsertion,
     YellowCross,
@@ -46,6 +49,7 @@ impl SkillId {
             Self::BuildDaisy => "Build daisy",
             Self::DaisyToCross => "Daisy to cross",
             Self::DirectCross => "Direct cross",
+            Self::IntuitiveF2L => "Intuitive F2L",
             Self::BeginnerCornerInsertion => "Beginner corner insertion",
             Self::BeginnerSecondLayerInsertion => "Beginner second-layer insertion",
             Self::YellowCross => "Yellow cross",
@@ -261,38 +265,153 @@ impl SecondLayerEdgeSolver {
             return None;
         }
 
-        let completed_edges = cube.second_layer_edge_count();
-        let edges_on_down = cube.second_layer_edges_on_down_count();
-        let mut ejection = None;
+        find_second_layer_step(cube)
+            .map(|moves| SolveStep::new(SkillId::BeginnerSecondLayerInsertion, moves))
+    }
+}
 
-        for setup in [vec![], vec![Move::D], vec![Move::DPrime], vec![Move::D2]] {
-            for insertion in second_layer_insertions() {
-                let algorithm: Vec<_> = setup.iter().chain(insertion.iter()).copied().collect();
-                let mut attempt = cube.clone();
-                for &move_to_make in &algorithm {
-                    attempt.execute_move(move_to_make);
+pub struct IntuitiveF2LSolver;
+
+struct F2LSearchNode {
+    cost: usize,
+    order: usize,
+    cube: Cube,
+    moves: Vec<Move>,
+}
+
+impl PartialEq for F2LSearchNode {
+    fn eq(&self, other: &Self) -> bool {
+        self.cost == other.cost && self.order == other.order
+    }
+}
+
+impl Eq for F2LSearchNode {}
+
+impl PartialOrd for F2LSearchNode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for F2LSearchNode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other
+            .cost
+            .cmp(&self.cost)
+            .then_with(|| other.order.cmp(&self.order))
+    }
+}
+
+impl IntuitiveF2LSolver {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
+        if !cube.is_white_cross_complete() || cube.is_second_layer_complete() {
+            return None;
+        }
+
+        let completed_pairs = cube.f2l_pair_count();
+        let actions = intuitive_f2l_actions();
+        let mut pending = BinaryHeap::from([F2LSearchNode {
+            cost: 0,
+            order: 0,
+            cube: cube.clone(),
+            moves: Vec::new(),
+        }]);
+        let mut best_cost = HashMap::from([(cube.state_key(), 0)]);
+        let mut order = 1;
+
+        while let Some(node) = pending.pop() {
+            if node.cost >= MAX_F2L_STEP_LENGTH {
+                continue;
+            }
+
+            for action in &actions {
+                let next_cost = node.cost + action.len();
+                if next_cost > MAX_F2L_STEP_LENGTH {
+                    continue;
                 }
 
-                if !attempt.is_first_layer_complete()
-                    || attempt.second_layer_edge_count() < completed_edges
+                let mut next = node.cube.clone();
+                for &move_to_make in action {
+                    next.execute_move(move_to_make);
+                }
+                if !next.is_white_cross_complete() || next.f2l_pair_count() < completed_pairs {
+                    continue;
+                }
+
+                let state_key = next.state_key();
+                if best_cost
+                    .get(&state_key)
+                    .is_some_and(|&known_cost| known_cost <= next_cost)
                 {
                     continue;
                 }
-                if attempt.second_layer_edge_count() > completed_edges {
-                    return Some(SolveStep::new(
-                        SkillId::BeginnerSecondLayerInsertion,
-                        algorithm,
-                    ));
+                best_cost.insert(state_key, next_cost);
+
+                let mut next_algorithm = node.moves.clone();
+                next_algorithm.extend(action);
+                if next.f2l_pair_count() > completed_pairs {
+                    return Some(SolveStep::new(SkillId::IntuitiveF2L, next_algorithm));
                 }
-                if attempt.second_layer_edges_on_down_count() > edges_on_down && ejection.is_none()
-                {
-                    ejection = Some(algorithm);
-                }
+                pending.push(F2LSearchNode {
+                    cost: next_cost,
+                    order,
+                    cube: next,
+                    moves: next_algorithm,
+                });
+                order += 1;
             }
         }
 
-        ejection.map(|moves| SolveStep::new(SkillId::BeginnerSecondLayerInsertion, moves))
+        None
     }
+}
+
+fn intuitive_f2l_actions() -> Vec<Vec<Move>> {
+    let mut actions = vec![vec![Move::D], vec![Move::DPrime], vec![Move::D2]];
+    for side in [Move::R, Move::F, Move::L, Move::B] {
+        for side_turn in [side, side.inverse()] {
+            for top_turn in [Move::D, Move::DPrime, Move::D2] {
+                actions.push(vec![side_turn, top_turn, side_turn.inverse()]);
+            }
+        }
+    }
+    actions
+}
+
+fn find_second_layer_step(cube: &Cube) -> Option<Vec<Move>> {
+    if !cube.is_white_cross_complete() || cube.is_second_layer_complete() {
+        return None;
+    }
+
+    let completed_edges = cube.second_layer_edge_count();
+    let completed_corners = cube.first_layer_corner_count();
+    let edges_on_down = cube.second_layer_edges_on_down_count();
+    let mut ejection = None;
+
+    for setup in [vec![], vec![Move::D], vec![Move::DPrime], vec![Move::D2]] {
+        for insertion in second_layer_insertions() {
+            let algorithm: Vec<_> = setup.iter().chain(insertion.iter()).copied().collect();
+            let mut attempt = cube.clone();
+            for &move_to_make in &algorithm {
+                attempt.execute_move(move_to_make);
+            }
+
+            if !attempt.is_white_cross_complete()
+                || attempt.first_layer_corner_count() < completed_corners
+                || attempt.second_layer_edge_count() < completed_edges
+            {
+                continue;
+            }
+            if attempt.second_layer_edge_count() > completed_edges {
+                return Some(algorithm);
+            }
+            if attempt.second_layer_edges_on_down_count() > edges_on_down && ejection.is_none() {
+                ejection = Some(algorithm);
+            }
+        }
+    }
+
+    ejection
 }
 
 pub struct YellowCrossSolver;
@@ -719,6 +838,20 @@ mod tests {
         }
     }
 
+    fn build_intuitive_f2l(cube: &mut Cube) {
+        let mut attempts = 0;
+        while !cube.is_second_layer_complete() {
+            attempts += 1;
+            assert!(attempts < 30, "intuitive F2L stopped making progress");
+            let step =
+                IntuitiveF2LSolver::next_step(cube).expect("an intuitive-F2L step should exist");
+            assert_eq!(step.skill, SkillId::IntuitiveF2L);
+            for move_to_make in step.moves {
+                cube.execute_move(move_to_make);
+            }
+        }
+    }
+
     fn build_first_layer(cube: &mut Cube) {
         build_cross(cube);
         let mut attempts = 0;
@@ -857,6 +990,93 @@ mod tests {
             }
             build_direct_cross(&mut cube);
             assert!(cube.is_white_cross_complete());
+        }
+    }
+
+    #[test]
+    fn scrambled_cubes_can_complete_f2l_intuitively() {
+        let scrambles = [
+            vec![Move::R, Move::U, Move::FPrime, Move::L, Move::D],
+            vec![Move::F, Move::R, Move::UPrime, Move::B, Move::LPrime],
+            vec![Move::DPrime, Move::BPrime, Move::R, Move::F, Move::U],
+            vec![Move::L, Move::FPrime, Move::D, Move::RPrime, Move::B],
+        ];
+
+        for scramble in scrambles {
+            let mut cube = Cube::new();
+            for move_to_make in scramble {
+                cube.execute_move(move_to_make);
+            }
+            build_direct_cross(&mut cube);
+            build_intuitive_f2l(&mut cube);
+            assert!(cube.is_second_layer_complete());
+        }
+    }
+
+    #[test]
+    fn intuitive_f2l_recognizes_a_one_trigger_insertion() {
+        let mut cube = Cube::new();
+        for move_to_make in [Move::R, Move::D, Move::RPrime] {
+            cube.execute_move(move_to_make);
+        }
+        assert!(cube.is_white_cross_complete());
+        assert_eq!(cube.f2l_pair_count(), 3);
+
+        let step = IntuitiveF2LSolver::next_step(&cube).expect("the open F2L slot is recognized");
+        assert!(step.moves.len() <= 3);
+        for move_to_make in step.moves {
+            cube.execute_move(move_to_make);
+        }
+        assert_eq!(cube.f2l_pair_count(), 4);
+    }
+
+    #[test]
+    fn intuitive_f2l_does_not_regress_move_count_on_representative_scrambles() {
+        let scrambles = [
+            vec![Move::R, Move::U, Move::FPrime, Move::L, Move::D],
+            vec![Move::F, Move::R, Move::UPrime, Move::B, Move::LPrime],
+            vec![Move::DPrime, Move::BPrime, Move::R, Move::F, Move::U],
+            vec![Move::L, Move::FPrime, Move::D, Move::RPrime, Move::B],
+        ];
+
+        for scramble in scrambles {
+            let mut cross = Cube::new();
+            for move_to_make in scramble {
+                cross.execute_move(move_to_make);
+            }
+            build_direct_cross(&mut cross);
+
+            let mut beginner = cross.clone();
+            let mut beginner_moves = 0;
+            while !beginner.is_first_layer_complete() {
+                let step = FirstLayerCornerSolver::next_step(&beginner).unwrap();
+                beginner_moves += step.moves.len();
+                for move_to_make in step.moves {
+                    beginner.execute_move(move_to_make);
+                }
+            }
+            while !beginner.is_second_layer_complete() {
+                let step = SecondLayerEdgeSolver::next_step(&beginner).unwrap();
+                beginner_moves += step.moves.len();
+                for move_to_make in step.moves {
+                    beginner.execute_move(move_to_make);
+                }
+            }
+
+            let mut intuitive = cross;
+            let mut intuitive_moves = 0;
+            while !intuitive.is_second_layer_complete() {
+                let step = IntuitiveF2LSolver::next_step(&intuitive).unwrap();
+                intuitive_moves += step.moves.len();
+                for move_to_make in step.moves {
+                    intuitive.execute_move(move_to_make);
+                }
+            }
+
+            assert!(
+                intuitive_moves <= beginner_moves,
+                "intuitive F2L used {intuitive_moves} moves versus {beginner_moves} beginner moves"
+            );
         }
     }
 

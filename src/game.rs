@@ -2,7 +2,7 @@ use crate::cube::Cube;
 use crate::moves::random_scramble;
 use crate::progression::{PlayerSkills, Technique};
 use crate::solver::{
-    DaisySolver, DaisyToCrossSolver, DirectCrossSolver, FirstLayerCornerSolver,
+    DaisySolver, DaisyToCrossSolver, DirectCrossSolver, FirstLayerCornerSolver, IntuitiveF2LSolver,
     LastLayerCornerOrientationSolver, LastLayerCornerPositionSolver, LastLayerEdgeSolver,
     SecondLayerEdgeSolver, SolveStep, YellowCrossSolver,
 };
@@ -18,6 +18,10 @@ const VERTEX_SHADER: &str = include_str!("../cube_shader.vert");
 
 fn direct_cross_button() -> Rect {
     Rect::new(screen_width() - 310.0, 80.0, 290.0, 70.0)
+}
+
+fn intuitive_f2l_button() -> Rect {
+    Rect::new(screen_width() - 310.0, 170.0, 290.0, 70.0)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -211,8 +215,14 @@ impl Game {
             .or_else(|| LastLayerCornerPositionSolver::next_step(&self.cube))
             .or_else(|| LastLayerEdgeSolver::next_step(&self.cube))
             .or_else(|| YellowCrossSolver::next_step(&self.cube))
-            .or_else(|| SecondLayerEdgeSolver::next_step(&self.cube))
-            .or_else(|| FirstLayerCornerSolver::next_step(&self.cube))
+            .or_else(|| {
+                if self.player_skills.is_unlocked(Technique::IntuitiveF2L) {
+                    IntuitiveF2LSolver::next_step(&self.cube)
+                } else {
+                    SecondLayerEdgeSolver::next_step(&self.cube)
+                        .or_else(|| FirstLayerCornerSolver::next_step(&self.cube))
+                }
+            })
             .or_else(|| {
                 if self.player_skills.is_unlocked(Technique::DirectCross) {
                     DirectCrossSolver::next_step(&self.cube)
@@ -238,6 +248,8 @@ impl Game {
             let mouse = Vec2::from(mouse_position());
             if direct_cross_button().contains(mouse) {
                 self.player_skills.unlock(Technique::DirectCross);
+            } else if intuitive_f2l_button().contains(mouse) {
+                self.player_skills.unlock(Technique::IntuitiveF2L);
             }
         }
     }
@@ -368,13 +380,22 @@ impl Game {
             WHITE,
         );
 
-        let intuitive_f2l = Rect::new(direct_cross.x, direct_cross.y + 90.0, 290.0, 70.0);
+        let intuitive_f2l = intuitive_f2l_button();
+        let f2l_unlocked = self.player_skills.is_unlocked(Technique::IntuitiveF2L);
+        let f2l_available =
+            cross_unlocked && self.player_skills.skill_points() >= Technique::IntuitiveF2L.cost();
         draw_rectangle(
             intuitive_f2l.x,
             intuitive_f2l.y,
             intuitive_f2l.w,
             intuitive_f2l.h,
-            DARKGRAY,
+            if f2l_unlocked {
+                DARKGREEN
+            } else if f2l_available {
+                BLUE
+            } else {
+                DARKGRAY
+            },
         );
         draw_text(
             "INTUITIVE F2L",
@@ -384,10 +405,16 @@ impl Game {
             WHITE,
         );
         draw_text(
-            "COMING SOON",
+            if f2l_unlocked {
+                "UNLOCKED - pairs corners and edges"
+            } else if cross_unlocked {
+                "1 SP - pairs corners and edges"
+            } else {
+                "REQUIRES DIRECT CROSS"
+            },
             intuitive_f2l.x + 10.0,
             intuitive_f2l.y + 56.0,
-            24.0,
+            19.0,
             LIGHTGRAY,
         );
 

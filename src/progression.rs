@@ -191,4 +191,17 @@ mod tests {
         assert_eq!(skills.skill_points(), 0);
         assert!(!skills.unlock(Technique::DirectCross));
     }
+
+    #[test]
+    fn intuitive_f2l_requires_direct_cross() {
+        let mut skills = PlayerSkills::default();
+        for _ in 0..5 {
+            skills.award_solve_xp();
+        }
+
+        assert_eq!(skills.skill_points(), 2);
+        assert!(!skills.unlock(Technique::IntuitiveF2L));
+        assert!(skills.unlock(Technique::DirectCross));
+        assert!(skills.unlock(Technique::IntuitiveF2L));
+    }
 }

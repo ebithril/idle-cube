@@ -56,7 +56,7 @@
 - [ ] Scale solve XP rewards around the world-record benchmark.
 - [x] Add the skill-tree foundation and spendable skill points.
 - [x] Allow direct cross to supersede the daisy route when unlocked.
-- [ ] Add intuitive F2L techniques as alternatives to beginner first- and second-layer steps.
+- [x] Add intuitive F2L techniques as alternatives to beginner first- and second-layer steps.
 - [ ] Add individual OLL and PLL cases above the beginner fallbacks as they are learned.
 - [x] Track move count and solve time.
 - [x] Track rolling AO3, AO5, AO20, and AO100 statistics.

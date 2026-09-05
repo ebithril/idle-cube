@@ -413,6 +413,24 @@ impl Cube {
         self.is_first_layer_complete() && self.second_layer_edge_count() == 4
     }
 
+    pub fn f2l_pair_count(&self) -> usize {
+        type Position = (usize, usize, usize);
+        const F2L_SLOTS: [(Position, Position); 4] = [
+            ((0, 2, 0), (0, 1, 0)),
+            ((2, 2, 0), (2, 1, 0)),
+            ((0, 2, 2), (0, 1, 2)),
+            ((2, 2, 2), (2, 1, 2)),
+        ];
+
+        F2L_SLOTS
+            .into_iter()
+            .filter(|&(corner, edge)| {
+                self.is_piece_solved(get_idx(corner.0, corner.1, corner.2))
+                    && self.is_piece_solved(get_idx(edge.0, edge.1, edge.2))
+            })
+            .count()
+    }
+
     pub fn yellow_cross_count(&self) -> usize {
         const YELLOW_EDGE_POSITIONS: [(usize, usize, usize); 4] =
             [(1, 0, 0), (0, 0, 1), (2, 0, 1), (1, 0, 2)];
