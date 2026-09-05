@@ -1,10 +1,10 @@
 use crate::cube::Cube;
 use crate::moves::random_scramble;
-use crate::progression::PlayerSkills;
+use crate::progression::{PlayerSkills, Technique};
 use crate::solver::{
-    DaisySolver, DaisyToCrossSolver, FirstLayerCornerSolver, LastLayerCornerOrientationSolver,
-    LastLayerCornerPositionSolver, LastLayerEdgeSolver, SecondLayerEdgeSolver, SolveStep,
-    YellowCrossSolver,
+    DaisySolver, DaisyToCrossSolver, DirectCrossSolver, FirstLayerCornerSolver,
+    LastLayerCornerOrientationSolver, LastLayerCornerPositionSolver, LastLayerEdgeSolver,
+    SecondLayerEdgeSolver, SolveStep, YellowCrossSolver,
 };
 
 use macroquad::prelude::*;
@@ -15,6 +15,10 @@ const CUBE_FRAGMENT_SHADER: &str = include_str!("../cube_shader.frag");
 
 // Vertex shader that works with macroquad's coordinate system
 const VERTEX_SHADER: &str = include_str!("../cube_shader.vert");
+
+fn direct_cross_button() -> Rect {
+    Rect::new(screen_width() - 310.0, 80.0, 290.0, 70.0)
+}
 
 #[derive(Clone, Copy, Debug)]
 struct SolveResult {
@@ -157,6 +161,7 @@ impl Game {
 
     fn update(&mut self) {
         let dt = get_frame_time();
+        self.handle_skill_tree();
         let was_solving = self.scramble_complete && self.solve_timing.elapsed.is_some();
         let was_recognizing = self.pending_step.is_some();
         let completed_move = self.cube.update(dt);
@@ -172,6 +177,7 @@ impl Game {
                 .update(dt, completed_move.is_some(), was_recognizing);
             if self.cube.is_idle() && self.cube.is_solved() {
                 self.solve_timing.finish();
+                self.player_skills.award_solve_xp();
                 self.queue_scramble();
                 return;
             }
@@ -207,8 +213,14 @@ impl Game {
             .or_else(|| YellowCrossSolver::next_step(&self.cube))
             .or_else(|| SecondLayerEdgeSolver::next_step(&self.cube))
             .or_else(|| FirstLayerCornerSolver::next_step(&self.cube))
-            .or_else(|| DaisyToCrossSolver::next_step(&self.cube))
-            .or_else(|| DaisySolver::next_step(&self.cube))
+            .or_else(|| {
+                if self.player_skills.is_unlocked(Technique::DirectCross) {
+                    DirectCrossSolver::next_step(&self.cube)
+                } else {
+                    DaisyToCrossSolver::next_step(&self.cube)
+                        .or_else(|| DaisySolver::next_step(&self.cube))
+                }
+            })
     }
 
     fn queue_scramble(&mut self) {
@@ -219,6 +231,15 @@ impl Game {
         self.pending_step = None;
         self.recognition_remaining = 0.0;
         self.active_skill = None;
+    }
+
+    fn handle_skill_tree(&mut self) {
+        if is_mouse_button_pressed(MouseButton::Left) {
+            let mouse = Vec2::from(mouse_position());
+            if direct_cross_button().contains(mouse) {
+                self.player_skills.unlock(Technique::DirectCross);
+            }
+        }
     }
 
     async fn render(&self) {
@@ -300,6 +321,100 @@ impl Game {
             );
             draw_text(&text, 10.0, y, 30.0, WHITE);
         }
+
+        let direct_cross = direct_cross_button();
+        let cross_unlocked = self.player_skills.is_unlocked(Technique::DirectCross);
+        let can_afford = self.player_skills.skill_points() >= Technique::DirectCross.cost();
+        draw_text(
+            &format!(
+                "SKILL POINTS: {}    MAX TPS: {:.2}",
+                self.player_skills.skill_points(),
+                self.player_skills.max_tps()
+            ),
+            direct_cross.x,
+            50.0,
+            24.0,
+            WHITE,
+        );
+        draw_rectangle(
+            direct_cross.x,
+            direct_cross.y,
+            direct_cross.w,
+            direct_cross.h,
+            if cross_unlocked {
+                DARKGREEN
+            } else if can_afford {
+                BLUE
+            } else {
+                DARKGRAY
+            },
+        );
+        draw_text(
+            "DIRECT CROSS",
+            direct_cross.x + 10.0,
+            direct_cross.y + 28.0,
+            24.0,
+            WHITE,
+        );
+        draw_text(
+            if cross_unlocked {
+                "UNLOCKED - skips the daisy"
+            } else {
+                "1 SP - skips the daisy"
+            },
+            direct_cross.x + 10.0,
+            direct_cross.y + 56.0,
+            24.0,
+            WHITE,
+        );
+
+        let intuitive_f2l = Rect::new(direct_cross.x, direct_cross.y + 90.0, 290.0, 70.0);
+        draw_rectangle(
+            intuitive_f2l.x,
+            intuitive_f2l.y,
+            intuitive_f2l.w,
+            intuitive_f2l.h,
+            DARKGRAY,
+        );
+        draw_text(
+            "INTUITIVE F2L",
+            intuitive_f2l.x + 10.0,
+            intuitive_f2l.y + 28.0,
+            24.0,
+            WHITE,
+        );
+        draw_text(
+            "COMING SOON",
+            intuitive_f2l.x + 10.0,
+            intuitive_f2l.y + 56.0,
+            24.0,
+            LIGHTGRAY,
+        );
+
+        let xp_bar = Rect::new(20.0, screen_height() - 38.0, screen_width() - 40.0, 22.0);
+        draw_rectangle(xp_bar.x, xp_bar.y, xp_bar.w, xp_bar.h, DARKGRAY);
+        draw_rectangle(
+            xp_bar.x,
+            xp_bar.y,
+            xp_bar.w * self.player_skills.xp_progress(),
+            xp_bar.h,
+            BLUE,
+        );
+        draw_rectangle_lines(xp_bar.x, xp_bar.y, xp_bar.w, xp_bar.h, 2.0, WHITE);
+        let level_text = format!(
+            "LEVEL {}    XP {:.0} / {:.0}",
+            self.player_skills.level(),
+            self.player_skills.xp(),
+            self.player_skills.xp_to_next_level()
+        );
+        let text_width = measure_text(&level_text, None, 20, 1.0).width;
+        draw_text(
+            &level_text,
+            xp_bar.x + (xp_bar.w - text_width) / 2.0,
+            xp_bar.y + 18.0,
+            20.0,
+            WHITE,
+        );
         next_frame().await
     }
 }

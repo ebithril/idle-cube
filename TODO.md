@@ -51,16 +51,17 @@
 ## 5. Progression and idle-game systems
 
 - [x] Automatically start another scramble after each completed solve.
-- [ ] Add currency and rewards for completed solves.
-- [ ] Add technique and algorithm unlocks.
-- [ ] Allow direct cross to supersede the daisy route when unlocked.
+- [x] Award XP for completed solves.
+- [x] Turn XP into levels that grant a skill point and +1% global max TPS.
+- [ ] Scale solve XP rewards around the world-record benchmark.
+- [x] Add the skill-tree foundation and spendable skill points.
+- [x] Allow direct cross to supersede the daisy route when unlocked.
 - [ ] Add intuitive F2L techniques as alternatives to beginner first- and second-layer steps.
 - [ ] Add individual OLL and PLL cases above the beginner fallbacks as they are learned.
 - [x] Track move count and solve time.
 - [x] Track rolling AO3, AO5, AO20, and AO100 statistics.
 - [x] Add fixed recognition pauses between solve steps and track recognition time.
 - [x] Add per-skill recognition and turning proficiency.
-- [ ] Add global maximum TPS upgrades.
 - [ ] Add persistence for progression and settings.
 
 ## Later

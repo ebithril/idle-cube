@@ -24,12 +24,14 @@ const MOVES: [Move; 18] = [
 ];
 
 const MAX_DAISY_STEP_LENGTH: usize = 5;
+const MAX_DIRECT_CROSS_STEP_LENGTH: usize = 7;
 const MAX_CORNER_STEP_LENGTH: usize = 4;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum SkillId {
     BuildDaisy,
     DaisyToCross,
+    DirectCross,
     BeginnerCornerInsertion,
     BeginnerSecondLayerInsertion,
     YellowCross,
@@ -43,6 +45,7 @@ impl SkillId {
         match self {
             Self::BuildDaisy => "Build daisy",
             Self::DaisyToCross => "Daisy to cross",
+            Self::DirectCross => "Direct cross",
             Self::BeginnerCornerInsertion => "Beginner corner insertion",
             Self::BeginnerSecondLayerInsertion => "Beginner second-layer insertion",
             Self::YellowCross => "Yellow cross",
@@ -67,6 +70,50 @@ impl SolveStep {
             name: skill.name(),
             moves,
         }
+    }
+}
+
+pub struct DirectCrossSolver;
+
+impl DirectCrossSolver {
+    pub fn next_step(cube: &Cube) -> Option<SolveStep> {
+        if cube.is_white_cross_complete() {
+            return None;
+        }
+
+        let completed_edges = cube.white_cross_count();
+        let mut pending = VecDeque::from([(cube.clone(), Vec::new())]);
+        let mut visited = HashSet::from([cube.state_key()]);
+
+        while let Some((state, algorithm)) = pending.pop_front() {
+            if algorithm.len() == MAX_DIRECT_CROSS_STEP_LENGTH {
+                continue;
+            }
+
+            for move_to_make in MOVES {
+                if algorithm
+                    .last()
+                    .is_some_and(|previous: &Move| previous.same_face(move_to_make))
+                {
+                    continue;
+                }
+
+                let mut next = state.clone();
+                next.execute_move(move_to_make);
+                if !visited.insert(next.state_key()) {
+                    continue;
+                }
+
+                let mut next_algorithm = algorithm.clone();
+                next_algorithm.push(move_to_make);
+                if next.white_cross_count() > completed_edges {
+                    return Some(SolveStep::new(SkillId::DirectCross, next_algorithm));
+                }
+                pending.push_back((next, next_algorithm));
+            }
+        }
+
+        None
     }
 }
 
@@ -658,6 +705,20 @@ mod tests {
         }
     }
 
+    fn build_direct_cross(cube: &mut Cube) {
+        let mut attempts = 0;
+        while !cube.is_white_cross_complete() {
+            attempts += 1;
+            assert!(attempts <= 4, "direct cross solver stopped making progress");
+            let step =
+                DirectCrossSolver::next_step(cube).expect("a direct-cross step should exist");
+            assert_eq!(step.skill, SkillId::DirectCross);
+            for move_to_make in step.moves {
+                cube.execute_move(move_to_make);
+            }
+        }
+    }
+
     fn build_first_layer(cube: &mut Cube) {
         build_cross(cube);
         let mut attempts = 0;
@@ -777,6 +838,25 @@ mod tests {
             }
             build_daisy(&mut cube);
             assert!(cube.is_daisy_complete());
+        }
+    }
+
+    #[test]
+    fn scrambled_cubes_can_build_a_cross_directly() {
+        let scrambles = [
+            vec![Move::R, Move::U, Move::FPrime, Move::L, Move::D],
+            vec![Move::F, Move::R, Move::UPrime, Move::B, Move::LPrime],
+            vec![Move::DPrime, Move::BPrime, Move::R, Move::F, Move::U],
+            vec![Move::L, Move::FPrime, Move::D, Move::RPrime, Move::B],
+        ];
+
+        for scramble in scrambles {
+            let mut cube = Cube::new();
+            for move_to_make in scramble {
+                cube.execute_move(move_to_make);
+            }
+            build_direct_cross(&mut cube);
+            assert!(cube.is_white_cross_complete());
         }
     }
 
