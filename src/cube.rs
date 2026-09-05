@@ -426,6 +426,24 @@ impl Cube {
         self.is_second_layer_complete() && self.yellow_cross_count() == 4
     }
 
+    pub fn last_layer_edge_count(&self) -> usize {
+        const EDGE_POSITIONS: [(usize, usize, usize); 4] =
+            [(1, 0, 0), (0, 0, 1), (2, 0, 1), (1, 0, 2)];
+
+        EDGE_POSITIONS
+            .into_iter()
+            .filter(|&(x, y, z)| {
+                let position = get_idx(x, y, z);
+                let piece = &self.pieces[position];
+                piece.home_index == position && piece.orientation == Orientation::IDENTITY
+            })
+            .count()
+    }
+
+    pub fn are_last_layer_edges_complete(&self) -> bool {
+        self.is_yellow_cross_complete() && self.last_layer_edge_count() == 4
+    }
+
     pub(crate) fn second_layer_edges_on_down_count(&self) -> usize {
         self.pieces
             .iter()

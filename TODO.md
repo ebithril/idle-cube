@@ -43,6 +43,7 @@
 - [x] Insert first-layer corners.
 - [x] Insert second-layer edges.
 - [x] Build the last-layer cross.
+- [x] Permute the last-layer edges.
 - [ ] Complete the remaining beginner-method last-layer steps.
 - [ ] Test that the fallback repertoire solves many deterministic scrambles.
 

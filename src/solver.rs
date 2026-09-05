@@ -240,6 +240,80 @@ impl YellowCrossSolver {
     }
 }
 
+pub struct LastLayerEdgeSolver;
+
+impl LastLayerEdgeSolver {
+    pub fn next_step(cube: &Cube) -> Option<Vec<Move>> {
+        if !cube.is_yellow_cross_complete() || cube.are_last_layer_edges_complete() {
+            return None;
+        }
+
+        let completed_edges = cube.last_layer_edge_count();
+        let mut actions = Vec::new();
+        for setup in [vec![], vec![Move::D], vec![Move::DPrime], vec![Move::D2]] {
+            for algorithm in last_layer_edge_algorithms() {
+                actions.push(
+                    setup
+                        .iter()
+                        .chain(algorithm.iter())
+                        .copied()
+                        .collect::<Vec<_>>(),
+                );
+            }
+        }
+
+        let mut pending = VecDeque::from([(cube.clone(), Vec::new())]);
+        let mut visited = HashSet::from([cube.state_key()]);
+        while let Some((state, algorithms)) = pending.pop_front() {
+            if algorithms.len() == 3 {
+                continue;
+            }
+
+            for action in &actions {
+                let mut next = state.clone();
+                for &move_to_make in action {
+                    next.execute_move(move_to_make);
+                }
+                if !next.is_yellow_cross_complete() || !visited.insert(next.state_key()) {
+                    continue;
+                }
+
+                let mut next_algorithms = algorithms.clone();
+                next_algorithms.push(action.clone());
+                if next.last_layer_edge_count() > completed_edges {
+                    return Some(next_algorithms.into_iter().flatten().collect());
+                }
+                pending.push_back((next, next_algorithms));
+            }
+        }
+
+        None
+    }
+}
+
+fn last_layer_edge_algorithms() -> Vec<Vec<Move>> {
+    let mut algorithms = Vec::new();
+
+    for side in [Move::R, Move::F, Move::L, Move::B] {
+        for side in [side, side.inverse()] {
+            for down in [Move::D, Move::DPrime] {
+                algorithms.push(vec![
+                    side,
+                    down,
+                    side.inverse(),
+                    down,
+                    side,
+                    Move::D2,
+                    side.inverse(),
+                    down,
+                ]);
+            }
+        }
+    }
+
+    algorithms
+}
+
 fn yellow_cross_algorithms() -> Vec<Vec<Move>> {
     let adjacent_faces = [
         (Move::R, Move::F),
@@ -423,6 +497,23 @@ mod tests {
         }
     }
 
+    fn complete_last_layer_edges(cube: &mut Cube) {
+        build_yellow_cross(cube);
+        let mut attempts = 0;
+        while !cube.are_last_layer_edges_complete() {
+            attempts += 1;
+            assert!(
+                attempts < 5,
+                "last-layer edge solver stopped making progress"
+            );
+            let step =
+                LastLayerEdgeSolver::next_step(cube).expect("a last-layer edge step should exist");
+            for move_to_make in step {
+                cube.execute_move(move_to_make);
+            }
+        }
+    }
+
     #[test]
     fn solved_cube_can_build_a_daisy() {
         let mut cube = Cube::new();
@@ -591,6 +682,40 @@ mod tests {
                 cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
             }
             build_yellow_cross(&mut cube);
+        }
+    }
+
+    #[test]
+    fn scrambled_cube_can_complete_last_layer_edges() {
+        let mut cube = Cube::new();
+        for move_to_make in [
+            Move::R,
+            Move::U2,
+            Move::FPrime,
+            Move::L,
+            Move::D2,
+            Move::BPrime,
+        ] {
+            cube.execute_move(move_to_make);
+        }
+
+        complete_last_layer_edges(&mut cube);
+        assert!(cube.are_last_layer_edges_complete());
+    }
+
+    #[test]
+    fn deterministic_scrambles_can_complete_last_layer_edges() {
+        let mut random_state = 0x1a57_ed6e_u32;
+
+        for _ in 0..20 {
+            let mut cube = Cube::new();
+            for _ in 0..20 {
+                random_state = random_state
+                    .wrapping_mul(1_664_525)
+                    .wrapping_add(1_013_904_223);
+                cube.execute_move(MOVES[random_state as usize % MOVES.len()]);
+            }
+            complete_last_layer_edges(&mut cube);
         }
     }
 }
