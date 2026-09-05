@@ -50,12 +50,14 @@
 
 ## 5. Progression and idle-game systems
 
+- [x] Automatically start another scramble after each completed solve.
 - [ ] Add currency and rewards for completed solves.
 - [ ] Add technique and algorithm unlocks.
 - [ ] Allow direct cross to supersede the daisy route when unlocked.
 - [ ] Add intuitive F2L techniques as alternatives to beginner first- and second-layer steps.
 - [ ] Add individual OLL and PLL cases above the beginner fallbacks as they are learned.
 - [x] Track move count and solve time.
+- [x] Track rolling AO3, AO5, AO20, and AO100 statistics.
 - [ ] Track recognition time and turning speed.
 - [ ] Add persistence for progression and settings.
 

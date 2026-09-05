@@ -6,6 +6,7 @@ use crate::solver::{
 };
 
 use macroquad::prelude::*;
+use std::collections::VecDeque;
 
 // Fragment shader - will be loaded from file
 const CUBE_FRAGMENT_SHADER: &str = include_str!("../cube_shader.frag");
@@ -19,12 +20,19 @@ struct SolveResult {
     moves: u32,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct SolveAverage {
+    time: f32,
+    moves: f32,
+}
+
 #[derive(Default)]
 struct SolveTiming {
     elapsed: Option<f32>,
     moves: u32,
     last: Option<SolveResult>,
     best: Option<SolveResult>,
+    history: VecDeque<SolveResult>,
 }
 
 impl SolveTiming {
@@ -54,6 +62,25 @@ impl SolveTiming {
         if self.best.is_none_or(|best| result.time < best.time) {
             self.best = Some(result);
         }
+        self.history.push_back(result);
+        if self.history.len() > 100 {
+            self.history.pop_front();
+        }
+    }
+
+    fn average(&self, solve_count: usize) -> Option<SolveAverage> {
+        if self.history.len() < solve_count {
+            return None;
+        }
+
+        let recent = self.history.iter().rev().take(solve_count);
+        let (total_time, total_moves) = recent.fold((0.0, 0_u32), |totals, solve| {
+            (totals.0 + solve.time, totals.1 + solve.moves)
+        });
+        Some(SolveAverage {
+            time: total_time / solve_count as f32,
+            moves: total_moves as f32 / solve_count as f32,
+        })
     }
 }
 
@@ -118,6 +145,8 @@ impl Game {
             self.solve_timing.update(dt, completed_move.is_some());
             if self.cube.is_idle() && self.cube.is_solved() {
                 self.solve_timing.finish();
+                self.queue_scramble();
+                return;
             }
         }
 
@@ -145,6 +174,12 @@ impl Game {
                 self.cube.queue_moves(step);
             }
         }
+    }
+
+    fn queue_scramble(&mut self) {
+        let mut rng = ::rand::rng();
+        self.cube.queue_moves(random_scramble(&mut rng, 20));
+        self.scramble_complete = false;
     }
 
     async fn render(&self) {
@@ -179,87 +214,22 @@ impl Game {
         gl_use_default_material();
 
         set_default_camera();
-        if self.cube.is_solved() {
-            draw_text("SOLVED", 10.0, 30.0, 30.0, GREEN);
-        } else {
-            draw_text("UNSOLVED", 10.0, 30.0, 30.0, RED);
-        }
-        draw_text(
-            &format!("DAISY: {}/4", self.cube.daisy_count()),
-            10.0,
-            60.0,
-            30.0,
-            WHITE,
-        );
-        draw_text(
-            &format!("CROSS: {}/4", self.cube.white_cross_count()),
-            10.0,
-            90.0,
-            30.0,
-            WHITE,
-        );
-        draw_text(
-            &format!("CORNERS: {}/4", self.cube.first_layer_corner_count()),
-            10.0,
-            120.0,
-            30.0,
-            WHITE,
-        );
-        draw_text(
-            &format!("SECOND LAYER: {}/4", self.cube.second_layer_edge_count()),
-            10.0,
-            150.0,
-            30.0,
-            WHITE,
-        );
-        draw_text(
-            &format!("YELLOW CROSS: {}/4", self.cube.yellow_cross_count()),
-            10.0,
-            180.0,
-            30.0,
-            YELLOW,
-        );
-        draw_text(
-            &format!("LAST EDGES: {}/4", self.cube.last_layer_edge_count()),
-            10.0,
-            210.0,
-            30.0,
-            YELLOW,
-        );
-        draw_text(
-            &format!(
-                "POSITIONED CORNERS: {}/4",
-                self.cube.positioned_last_layer_corner_count()
-            ),
-            10.0,
-            240.0,
-            30.0,
-            YELLOW,
-        );
-        draw_text(
-            &format!(
-                "ORIENTED CORNERS: {}/4",
-                self.cube.oriented_last_layer_corner_count()
-            ),
-            10.0,
-            270.0,
-            30.0,
-            YELLOW,
-        );
         if let Some(elapsed) = self.solve_timing.elapsed {
             draw_text(
                 &format!("TIME: {elapsed:.2}s  MOVES: {}", self.solve_timing.moves),
                 10.0,
-                310.0,
+                30.0,
                 30.0,
                 WHITE,
             );
+        } else {
+            draw_text("SCRAMBLING", 10.0, 30.0, 30.0, WHITE);
         }
         if let Some(last) = self.solve_timing.last {
             draw_text(
                 &format!("LAST: {:.2}s / {} moves", last.time, last.moves),
                 10.0,
-                340.0,
+                60.0,
                 30.0,
                 GREEN,
             );
@@ -268,13 +238,23 @@ impl Game {
             draw_text(
                 &format!("BEST: {:.2}s / {} moves", best.time, best.moves),
                 10.0,
-                370.0,
+                90.0,
                 30.0,
                 GREEN,
             );
         }
-        draw_fps();
-
+        for (solve_count, y) in [(3, 120.0), (5, 150.0), (20, 180.0), (100, 210.0)] {
+            let text = self.solve_timing.average(solve_count).map_or_else(
+                || format!("AO{solve_count}: --"),
+                |average| {
+                    format!(
+                        "AO{solve_count}: {:.2}s / {:.1} moves",
+                        average.time, average.moves
+                    )
+                },
+            );
+            draw_text(&text, 10.0, y, 30.0, WHITE);
+        }
         next_frame().await
     }
 }
@@ -300,5 +280,36 @@ mod tests {
         timing.finish();
         assert_eq!(timing.last.unwrap().time, 1.0);
         assert_eq!(timing.best.unwrap().time, 0.75);
+    }
+
+    #[test]
+    fn solve_timing_calculates_rolling_averages() {
+        let mut timing = SolveTiming::default();
+
+        for seconds in 1..=5 {
+            timing.start();
+            timing.update(seconds as f32, true);
+            timing.finish();
+        }
+
+        assert!(timing.average(20).is_none());
+        let average_of_three = timing.average(3).unwrap();
+        assert_eq!(average_of_three.time, 4.0);
+        assert_eq!(average_of_three.moves, 1.0);
+        assert_eq!(timing.average(5).unwrap().time, 3.0);
+    }
+
+    #[test]
+    fn solve_history_keeps_the_most_recent_hundred_solves() {
+        let mut timing = SolveTiming::default();
+
+        for seconds in 1..=101 {
+            timing.start();
+            timing.update(seconds as f32, false);
+            timing.finish();
+        }
+
+        assert_eq!(timing.history.len(), 100);
+        assert_eq!(timing.average(100).unwrap().time, 51.5);
     }
 }
