@@ -13,10 +13,55 @@ const CUBE_FRAGMENT_SHADER: &str = include_str!("../cube_shader.frag");
 // Vertex shader that works with macroquad's coordinate system
 const VERTEX_SHADER: &str = include_str!("../cube_shader.vert");
 
+#[derive(Clone, Copy, Debug)]
+struct SolveResult {
+    time: f32,
+    moves: u32,
+}
+
+#[derive(Default)]
+struct SolveTiming {
+    elapsed: Option<f32>,
+    moves: u32,
+    last: Option<SolveResult>,
+    best: Option<SolveResult>,
+}
+
+impl SolveTiming {
+    fn start(&mut self) {
+        self.elapsed = Some(0.0);
+        self.moves = 0;
+    }
+
+    fn update(&mut self, dt: f32, completed_move: bool) {
+        if let Some(elapsed) = &mut self.elapsed {
+            *elapsed += dt;
+            if completed_move {
+                self.moves += 1;
+            }
+        }
+    }
+
+    fn finish(&mut self) {
+        let Some(time) = self.elapsed.take() else {
+            return;
+        };
+        let result = SolveResult {
+            time,
+            moves: self.moves,
+        };
+        self.last = Some(result);
+        if self.best.is_none_or(|best| result.time < best.time) {
+            self.best = Some(result);
+        }
+    }
+}
+
 pub struct Game {
     cube: Cube,
     material: Material,
     scramble_complete: bool,
+    solve_timing: SolveTiming,
 }
 
 impl Game {
@@ -53,6 +98,7 @@ impl Game {
             cube,
             material,
             scramble_complete: false,
+            solve_timing: SolveTiming::default(),
         }
     }
 
@@ -65,10 +111,19 @@ impl Game {
 
     fn update(&mut self) {
         let dt = get_frame_time();
-        self.cube.update(dt);
+        let was_solving = self.scramble_complete && self.solve_timing.elapsed.is_some();
+        let completed_move = self.cube.update(dt);
+
+        if was_solving {
+            self.solve_timing.update(dt, completed_move.is_some());
+            if self.cube.is_idle() && self.cube.is_solved() {
+                self.solve_timing.finish();
+            }
+        }
 
         if !self.scramble_complete && self.cube.is_idle() {
             self.scramble_complete = true;
+            self.solve_timing.start();
         }
 
         if self.scramble_complete && self.cube.is_idle() && !self.cube.is_solved() {
@@ -191,8 +246,59 @@ impl Game {
             30.0,
             YELLOW,
         );
+        if let Some(elapsed) = self.solve_timing.elapsed {
+            draw_text(
+                &format!("TIME: {elapsed:.2}s  MOVES: {}", self.solve_timing.moves),
+                10.0,
+                310.0,
+                30.0,
+                WHITE,
+            );
+        }
+        if let Some(last) = self.solve_timing.last {
+            draw_text(
+                &format!("LAST: {:.2}s / {} moves", last.time, last.moves),
+                10.0,
+                340.0,
+                30.0,
+                GREEN,
+            );
+        }
+        if let Some(best) = self.solve_timing.best {
+            draw_text(
+                &format!("BEST: {:.2}s / {} moves", best.time, best.moves),
+                10.0,
+                370.0,
+                30.0,
+                GREEN,
+            );
+        }
         draw_fps();
 
         next_frame().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn solve_timing_tracks_time_moves_and_personal_best() {
+        let mut timing = SolveTiming::default();
+
+        timing.start();
+        timing.update(0.5, true);
+        timing.update(0.25, false);
+        timing.finish();
+        assert_eq!(timing.last.unwrap().moves, 1);
+        assert_eq!(timing.last.unwrap().time, 0.75);
+        assert_eq!(timing.best.unwrap().time, 0.75);
+
+        timing.start();
+        timing.update(1.0, true);
+        timing.finish();
+        assert_eq!(timing.last.unwrap().time, 1.0);
+        assert_eq!(timing.best.unwrap().time, 0.75);
     }
 }

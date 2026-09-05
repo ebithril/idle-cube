@@ -596,17 +596,20 @@ impl Cube {
         }
     }
 
-    pub fn update(&mut self, dt: f32) {
+    pub fn update(&mut self, dt: f32) -> Option<Move> {
         if self.alg.is_empty() {
-            return;
+            return None;
         }
 
         self.alg_time += dt;
         if self.alg_time > self.move_time {
             self.alg_time = 0.;
-            let current_move = self.alg.pop_front();
-            self.execute_move(current_move.unwrap());
+            let current_move = self.alg.pop_front().expect("the move queue is not empty");
+            self.execute_move(current_move);
+            return Some(current_move);
         }
+
+        None
     }
 
     fn get_rotation_angle(&self, expected_move: Move) -> Mat4 {

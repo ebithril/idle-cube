@@ -55,7 +55,8 @@
 - [ ] Allow direct cross to supersede the daisy route when unlocked.
 - [ ] Add intuitive F2L techniques as alternatives to beginner first- and second-layer steps.
 - [ ] Add individual OLL and PLL cases above the beginner fallbacks as they are learned.
-- [ ] Track recognition time, turning speed, move count, and solve time.
+- [x] Track move count and solve time.
+- [ ] Track recognition time and turning speed.
 - [ ] Add persistence for progression and settings.
 
 ## Later
