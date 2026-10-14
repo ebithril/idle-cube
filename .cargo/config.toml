@@ -1,0 +1,3 @@
+[target.wasm32-unknown-unknown]
+# Miniquad's extern functions are supplied by mq_js_bundle.js at runtime.
+rustflags = ["-C", "link-arg=--allow-undefined"]

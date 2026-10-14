@@ -24,57 +24,42 @@ cargo run --release
 
 The game will launch in a native window.
 
-## Building for WebAssembly
+## Running in the browser
 
-### Prerequisites
-1. Install the WASM target:
+Install the target and build the static site:
+
 ```bash
 rustup target add wasm32-unknown-unknown
+./build_wasm.sh
+python3 -m http.server 8080 --directory dist
 ```
 
-2. Install a local web server (choose one):
-```bash
-# Python 3
-python3 -m http.server
+Open `http://localhost:8080`. Serve over HTTP rather than opening `index.html`
+directly. The build packages `index.html`, `idle_cube.wasm`, and
+`mq_js_bundle.js` into `dist/`; shaders are embedded in the WASM binary.
 
-# or Node.js
-npm install -g http-server
+The JavaScript loader in `web/mq_js_bundle.js` comes from the **macroquad 0.4.14**
+crate (`js/mq_js_bundle.js`) and includes its JavaScript plugins. When upgrading
+macroquad, replace this bundle with the one from the new crate and verify browser
+startup. The older miniquad `gl-0.2.8.js` loader is not used. Scrambles use a
+clock-seeded PRNG so the binary requires no wasm-bindgen JavaScript glue.
 
-# or Rust
-cargo install basic-http-server
-```
+## Deploying to GitHub Pages
 
-### Build for WASM
-```bash
-cargo build --release --target wasm32-unknown-unknown
-```
+1. Push this repository and the workflow to GitHub on the `main` branch.
+2. In **Settings → Pages → Build and deployment**, select **GitHub Actions**
+   as the source.
+3. Push to `main` or run **Build and deploy browser game** from the Actions tab.
 
-### Copy the WASM file
-```bash
-cp target/wasm32-unknown-unknown/release/idle_cube.wasm .
-```
+The workflow tests the game, builds WASM, and publishes only `dist/`. Pull
+requests run the tests and build without deploying. The deployment URL appears
+in the workflow's `github-pages` environment, normally
+`https://<owner>.github.io/<repository>/`.
 
-### Serve the game
-```bash
-# Using Python
-python3 -m http.server 8080
-
-# Using basic-http-server
-basic-http-server .
-
-# Using http-server
-http-server -p 8080
-```
-
-Then open your browser to `http://localhost:8080`
-
-## Quick Build Script
-
-For convenience, you can use this one-liner to build and prepare for web:
-
-```bash
-cargo build --release --target wasm32-unknown-unknown && cp target/wasm32-unknown-unknown/release/idle_cube.wasm .
-```
+All asset URLs are relative, so repository subpaths and custom domains work
+without changing the build. To host elsewhere, upload the contents of `dist/`
+to any static web host. The checked-in root `idle_cube.wasm` is an old artifact;
+the build and deployment always use the newly compiled binary in `dist/`.
 
 ## Game Controls
 
@@ -107,7 +92,7 @@ cargo build --release --target wasm32-unknown-unknown && cp target/wasm32-unknow
 ### Architecture
 - Built with [macroquad](https://github.com/not-fl3/macroquad) game framework
 - Custom GLSL shaders (version 100 for WebGL compatibility)
-- Pure Rust implementation with zero JavaScript dependencies
+- Rust gameplay with the bundled macroquad JavaScript loader
 
 ### Performance
 - Optimized for size with `opt-level = "z"` and LTO

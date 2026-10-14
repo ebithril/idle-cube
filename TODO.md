@@ -59,6 +59,9 @@
 - [x] Add intuitive F2L techniques as alternatives to beginner first- and second-layer steps.
 - [x] Add individual 2-look PLL cases above the beginner fallbacks as they are learned.
 - [x] Add individual 2-look OLL cases as sibling choices in the skill tree.
+- [x] Add prestige resets based on total XP earned during the run.
+- [x] Give unspent prestige currency a multiplicative XP bonus.
+- [x] Add permanent TPS-cap and recognition-floor prestige upgrades.
 - [x] Track move count and solve time.
 - [x] Track rolling AO3, AO5, AO20, and AO100 statistics.
 - [x] Add fixed recognition pauses between solve steps and track recognition time.

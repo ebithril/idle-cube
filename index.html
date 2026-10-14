@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Speedcube Idle</title>
     <style>
-        canvas {
+        html, body, canvas {
 	    margin: 0px;
             padding: 0px;
             width: 100%;
@@ -22,7 +22,8 @@
         <canvas id="glcanvas" tabindex='1'></canvas>
     </div>
 
-    <script src="https://not-fl3.github.io/miniquad-samples/gl-0.2.8.js"></script> <!-- gl.js from miniquad repo (native/sapp-wasm/js/gl.js) -->
+    <!-- Bundled with macroquad 0.4.14; keep in sync with Cargo.toml. -->
+    <script src="mq_js_bundle.js"></script>
     <script>
         load("idle_cube.wasm");
     </script>
