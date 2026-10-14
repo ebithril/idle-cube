@@ -24,6 +24,8 @@ jobs:
           targets: wasm32-unknown-unknown
       - name: Test game logic
         run: cargo test --locked
+      - name: Test WebGL matrix uploads
+        run: node scripts/test-web-loader.mjs
       - name: Build browser game
         run: ./build_wasm.sh
       - name: Upload site

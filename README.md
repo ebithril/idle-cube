@@ -41,7 +41,8 @@ directly. The build packages `index.html`, `idle_cube.wasm`, and
 The JavaScript loader in `web/mq_js_bundle.js` comes from the **macroquad 0.4.14**
 crate (`js/mq_js_bundle.js`) and includes its JavaScript plugins. When upgrading
 macroquad, replace this bundle with the one from the new crate and verify browser
-startup. The older miniquad `gl-0.2.8.js` loader is not used. Scrambles use a
+startup. A local fix ensures matrix arrays upload all their elements (see
+`web/README.md`). The older miniquad `gl-0.2.8.js` loader is not used. Scrambles use a
 clock-seeded PRNG so the binary requires no wasm-bindgen JavaScript glue.
 
 ## Deploying to GitHub Pages
