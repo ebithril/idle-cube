@@ -2,13 +2,19 @@ use crate::solver::{OllAlgorithm, PllAlgorithm, SkillId};
 use std::collections::{HashMap, HashSet};
 
 const STARTING_TPS: f32 = 1.0;
-const STARTING_RECOGNITION_TIME: f32 = 0.5;
-const MIN_RECOGNITION_TIME: f32 = 0.05;
+const STARTING_RUN_MAX_TPS: f32 = 1.5;
+const STARTING_TPS_CAP: f32 = 6.0;
+const STARTING_RECOGNITION_TIME: f32 = 1.0;
+const STARTING_RECOGNITION_FLOOR: f32 = 0.25;
 const TURNING_MASTERY_SCALE: f32 = 20.0;
 const RECOGNITION_MASTERY_SCALE: f32 = 20.0;
 const INITIAL_LEVEL_XP: f32 = 20.0;
 const LEVEL_XP_MULTIPLIER: f32 = 1.25;
-const LEVEL_TPS_MULTIPLIER: f32 = 1.1;
+const LEVEL_TPS_MULTIPLIER: f32 = 1.08;
+const PRESTIGE_XP_SCALE: f32 = 100.0;
+const PRESTIGE_XP_MULTIPLIER: f32 = 1.1;
+const PRESTIGE_TPS_CAP_MULTIPLIER: f32 = 1.1;
+const PRESTIGE_RECOGNITION_FLOOR_MULTIPLIER: f32 = 0.9;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Technique {
@@ -32,9 +38,13 @@ pub struct Proficiency {
 
 pub struct PlayerSkills {
     max_tps: f32,
+    max_tps_cap: f32,
+    recognition_floor: f32,
     xp: f32,
+    run_xp: f32,
     level: u32,
     skill_points: u32,
+    prestige_currency: u32,
     unlocked_techniques: HashSet<Technique>,
     proficiency: HashMap<SkillId, Proficiency>,
 }
@@ -42,10 +52,14 @@ pub struct PlayerSkills {
 impl Default for PlayerSkills {
     fn default() -> Self {
         Self {
-            max_tps: 2.0,
+            max_tps: STARTING_RUN_MAX_TPS,
+            max_tps_cap: STARTING_TPS_CAP,
+            recognition_floor: STARTING_RECOGNITION_FLOOR,
             xp: 0.0,
+            run_xp: 0.0,
             level: 1,
             skill_points: 0,
+            prestige_currency: 0,
             unlocked_techniques: HashSet::new(),
             proficiency: HashMap::new(),
         }
@@ -59,6 +73,30 @@ impl PlayerSkills {
 
     pub fn xp(&self) -> f32 {
         self.xp
+    }
+
+    pub fn run_xp(&self) -> f32 {
+        self.run_xp
+    }
+
+    pub fn max_tps_cap(&self) -> f32 {
+        self.max_tps_cap
+    }
+
+    pub fn recognition_floor(&self) -> f32 {
+        self.recognition_floor
+    }
+
+    pub fn prestige_currency(&self) -> u32 {
+        self.prestige_currency
+    }
+
+    pub fn xp_multiplier(&self) -> f32 {
+        PRESTIGE_XP_MULTIPLIER.powi(self.prestige_currency as i32)
+    }
+
+    pub fn prestige_reward(&self) -> u32 {
+        (self.run_xp / PRESTIGE_XP_SCALE).sqrt().floor() as u32
     }
 
     pub fn level(&self) -> u32 {
@@ -78,7 +116,9 @@ impl PlayerSkills {
     }
 
     pub fn award_solve_xp(&mut self, solve_seconds: f32) {
-        self.award_xp(solve_xp(solve_seconds));
+        let earned = solve_xp(solve_seconds) * self.xp_multiplier();
+        self.run_xp += earned;
+        self.award_xp(earned);
     }
 
     fn award_xp(&mut self, amount: f32) {
@@ -87,8 +127,43 @@ impl PlayerSkills {
             self.xp -= self.xp_to_next_level();
             self.level += 1;
             self.skill_points += 1;
-            self.max_tps *= LEVEL_TPS_MULTIPLIER;
+            self.max_tps = (self.max_tps * LEVEL_TPS_MULTIPLIER).min(self.max_tps_cap);
         }
+    }
+
+    pub fn prestige(&mut self) -> bool {
+        let reward = self.prestige_reward();
+        if reward == 0 {
+            return false;
+        }
+
+        self.prestige_currency += reward;
+        self.max_tps = STARTING_RUN_MAX_TPS.min(self.max_tps_cap);
+        self.xp = 0.0;
+        self.run_xp = 0.0;
+        self.level = 1;
+        self.skill_points = 0;
+        self.unlocked_techniques.clear();
+        self.proficiency.clear();
+        true
+    }
+
+    pub fn buy_tps_cap_upgrade(&mut self) -> bool {
+        if self.prestige_currency == 0 {
+            return false;
+        }
+        self.prestige_currency -= 1;
+        self.max_tps_cap *= PRESTIGE_TPS_CAP_MULTIPLIER;
+        true
+    }
+
+    pub fn buy_recognition_floor_upgrade(&mut self) -> bool {
+        if self.prestige_currency == 0 {
+            return false;
+        }
+        self.prestige_currency -= 1;
+        self.recognition_floor *= PRESTIGE_RECOGNITION_FLOOR_MULTIPLIER;
+        true
     }
 
     pub fn is_unlocked(&self, technique: Technique) -> bool {
@@ -110,8 +185,8 @@ impl PlayerSkills {
 
     pub fn recognition_time(&self, skill: SkillId) -> f32 {
         let xp = self.proficiency(skill).recognition_xp;
-        MIN_RECOGNITION_TIME
-            + (STARTING_RECOGNITION_TIME - MIN_RECOGNITION_TIME)
+        self.recognition_floor
+            + (STARTING_RECOGNITION_TIME - self.recognition_floor)
                 * (-xp / RECOGNITION_MASTERY_SCALE).exp()
     }
 
@@ -178,7 +253,7 @@ mod tests {
             skills.practice_turning(skill);
         }
 
-        assert!(skills.recognition_time(skill) >= MIN_RECOGNITION_TIME);
+        assert!(skills.recognition_time(skill) >= skills.recognition_floor());
         assert!(skills.turning_tps(skill) <= skills.max_tps());
     }
 
@@ -258,5 +333,57 @@ mod tests {
         assert_eq!(solve_xp(3.0), 100.0);
         assert!(solve_xp(30.0) > solve_xp(45.0));
         assert!(solve_xp(30.0) < 100.0);
+    }
+
+    #[test]
+    fn one_hundred_run_xp_earns_the_first_prestige_currency() {
+        let mut skills = PlayerSkills {
+            run_xp: 100.0,
+            level: 8,
+            skill_points: 3,
+            ..Default::default()
+        };
+        skills.unlocked_techniques.insert(Technique::DirectCross);
+
+        assert_eq!(skills.prestige_reward(), 1);
+        assert!(skills.prestige());
+        assert_eq!(skills.prestige_currency(), 1);
+        assert_eq!(skills.run_xp(), 0.0);
+        assert_eq!(skills.level(), 1);
+        assert_eq!(skills.skill_points(), 0);
+        assert!(!skills.is_unlocked(Technique::DirectCross));
+    }
+
+    #[test]
+    fn prestige_upgrades_trade_the_banked_xp_bonus_for_permanent_caps() {
+        let mut skills = PlayerSkills {
+            prestige_currency: 2,
+            ..Default::default()
+        };
+        let initial_cap = skills.max_tps_cap();
+        let initial_floor = skills.recognition_floor();
+        assert!((skills.xp_multiplier() - 1.21).abs() < f32::EPSILON);
+
+        assert!(skills.buy_tps_cap_upgrade());
+        assert!(skills.max_tps_cap() > initial_cap);
+        assert!(skills.buy_recognition_floor_upgrade());
+        assert!(skills.recognition_floor() < initial_floor);
+        assert_eq!(skills.prestige_currency(), 0);
+        assert_eq!(skills.xp_multiplier(), 1.0);
+    }
+
+    #[test]
+    fn leveling_stops_at_the_current_tps_cap() {
+        let mut skills = PlayerSkills::default();
+        skills.award_xp(1_000_000.0);
+        assert_eq!(skills.max_tps(), skills.max_tps_cap());
+    }
+
+    #[test]
+    fn full_four_look_tree_reaches_the_initial_tps_cap() {
+        let full_tree_level_ups = 18;
+        let projected_tps = STARTING_RUN_MAX_TPS * LEVEL_TPS_MULTIPLIER.powi(full_tree_level_ups);
+
+        assert!((projected_tps - STARTING_TPS_CAP).abs() < 0.05);
     }
 }

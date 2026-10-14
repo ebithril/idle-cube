@@ -1,5 +1,5 @@
 use crate::cube::Cube;
-use crate::moves::random_scramble;
+use crate::moves::{random_scramble, scramble_rng};
 use crate::progression::{PlayerSkills, Technique};
 use crate::solver::{
     BeginnerOllSolver, DaisySolver, DaisyToCrossSolver, DirectCrossSolver, FirstLayerCornerSolver,
@@ -45,6 +45,18 @@ fn oll_button(index: usize) -> Rect {
         140.0,
         40.0,
     )
+}
+
+fn prestige_button() -> Rect {
+    Rect::new(10.0, 270.0, 300.0, 54.0)
+}
+
+fn tps_cap_button() -> Rect {
+    Rect::new(10.0, 335.0, 300.0, 54.0)
+}
+
+fn recognition_floor_button() -> Rect {
+    Rect::new(10.0, 400.0, 300.0, 54.0)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -133,6 +145,7 @@ pub struct Game {
     recognition_remaining: f32,
     active_skill: Option<crate::solver::SkillId>,
     player_skills: PlayerSkills,
+    prestige_confirmation: bool,
 }
 
 impl Game {
@@ -141,7 +154,7 @@ impl Game {
         let mut cube = Cube::new();
         cube.set_tps(player_skills.max_tps());
 
-        let mut rng = ::rand::rng();
+        let mut rng = scramble_rng();
         cube.queue_moves(random_scramble(&mut rng, 20));
 
         let material = load_material(
@@ -176,6 +189,7 @@ impl Game {
             recognition_remaining: 0.0,
             active_skill: None,
             player_skills,
+            prestige_confirmation: false,
         }
     }
 
@@ -188,7 +202,9 @@ impl Game {
 
     fn update(&mut self) {
         let dt = get_frame_time();
-        self.handle_skill_tree();
+        if self.handle_progression() {
+            return;
+        }
         let was_solving = self.scramble_complete && self.solve_timing.elapsed.is_some();
         let was_recognizing = self.pending_step.is_some();
         let completed_move = self.cube.update(dt);
@@ -278,7 +294,7 @@ impl Game {
     }
 
     fn queue_scramble(&mut self) {
-        let mut rng = ::rand::rng();
+        let mut rng = scramble_rng();
         self.cube.set_tps(self.player_skills.max_tps());
         self.cube.queue_moves(random_scramble(&mut rng, 20));
         self.scramble_complete = false;
@@ -287,14 +303,32 @@ impl Game {
         self.active_skill = None;
     }
 
-    fn handle_skill_tree(&mut self) {
+    fn handle_progression(&mut self) -> bool {
         if is_mouse_button_pressed(MouseButton::Left) {
             let mouse = Vec2::from(mouse_position());
-            if direct_cross_button().contains(mouse) {
+            if prestige_button().contains(mouse) && self.player_skills.prestige_reward() > 0 {
+                if self.prestige_confirmation && self.player_skills.prestige() {
+                    self.solve_timing = SolveTiming::default();
+                    self.cube = Cube::new();
+                    self.queue_scramble();
+                    self.prestige_confirmation = false;
+                    return true;
+                }
+                self.prestige_confirmation = true;
+            } else if tps_cap_button().contains(mouse) {
+                self.player_skills.buy_tps_cap_upgrade();
+                self.prestige_confirmation = false;
+            } else if recognition_floor_button().contains(mouse) {
+                self.player_skills.buy_recognition_floor_upgrade();
+                self.prestige_confirmation = false;
+            } else if direct_cross_button().contains(mouse) {
                 self.player_skills.unlock(Technique::DirectCross);
+                self.prestige_confirmation = false;
             } else if intuitive_f2l_button().contains(mouse) {
                 self.player_skills.unlock(Technique::IntuitiveF2L);
+                self.prestige_confirmation = false;
             } else {
+                self.prestige_confirmation = false;
                 for (index, algorithm) in PllAlgorithm::ALL.into_iter().enumerate() {
                     if pll_button(index).contains(mouse) {
                         self.player_skills.unlock(Technique::Pll(algorithm));
@@ -309,6 +343,7 @@ impl Game {
                 }
             }
         }
+        false
     }
 
     async fn render(&self) {
@@ -391,14 +426,91 @@ impl Game {
             draw_text(&text, 10.0, y, 30.0, WHITE);
         }
 
+        let prestige = prestige_button();
+        let prestige_reward = self.player_skills.prestige_reward();
+        draw_text(
+            &format!(
+                "RUN XP: {:.0}    PRESTIGE: {}    XP: x{:.3}",
+                self.player_skills.run_xp(),
+                self.player_skills.prestige_currency(),
+                self.player_skills.xp_multiplier()
+            ),
+            prestige.x,
+            prestige.y - 10.0,
+            20.0,
+            WHITE,
+        );
+        draw_rectangle(
+            prestige.x,
+            prestige.y,
+            prestige.w,
+            prestige.h,
+            if prestige_reward > 0 {
+                PURPLE
+            } else {
+                DARKGRAY
+            },
+        );
+        let prestige_text = if self.prestige_confirmation {
+            format!("CONFIRM RESET FOR {prestige_reward} PRESTIGE")
+        } else if prestige_reward > 0 {
+            format!("PRESTIGE RESET: +{prestige_reward}")
+        } else {
+            "PRESTIGE AT 100 RUN XP".to_owned()
+        };
+        draw_text(
+            &prestige_text,
+            prestige.x + 10.0,
+            prestige.y + 34.0,
+            20.0,
+            WHITE,
+        );
+
+        let has_prestige = self.player_skills.prestige_currency() > 0;
+        let tps_cap = tps_cap_button();
+        draw_rectangle(
+            tps_cap.x,
+            tps_cap.y,
+            tps_cap.w,
+            tps_cap.h,
+            if has_prestige { DARKGREEN } else { DARKGRAY },
+        );
+        draw_text(
+            &format!("+10% TPS CAP ({:.2}) - 1", self.player_skills.max_tps_cap()),
+            tps_cap.x + 10.0,
+            tps_cap.y + 34.0,
+            20.0,
+            WHITE,
+        );
+
+        let recognition_floor = recognition_floor_button();
+        draw_rectangle(
+            recognition_floor.x,
+            recognition_floor.y,
+            recognition_floor.w,
+            recognition_floor.h,
+            if has_prestige { DARKGREEN } else { DARKGRAY },
+        );
+        draw_text(
+            &format!(
+                "-10% RECOGNITION FLOOR ({:.3}s) - 1",
+                self.player_skills.recognition_floor()
+            ),
+            recognition_floor.x + 10.0,
+            recognition_floor.y + 34.0,
+            18.0,
+            WHITE,
+        );
+
         let direct_cross = direct_cross_button();
         let cross_unlocked = self.player_skills.is_unlocked(Technique::DirectCross);
         let can_afford = self.player_skills.skill_points() >= Technique::DirectCross.cost();
         draw_text(
             &format!(
-                "SKILL POINTS: {}    MAX TPS: {:.2}",
+                "SKILL POINTS: {}    MAX TPS: {:.2}/{:.2}",
                 self.player_skills.skill_points(),
-                self.player_skills.max_tps()
+                self.player_skills.max_tps(),
+                self.player_skills.max_tps_cap()
             ),
             direct_cross.x,
             50.0,

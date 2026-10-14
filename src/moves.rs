@@ -3,6 +3,12 @@ use ::rand::Rng;
 use bitflags::bitflags;
 use macroquad::math::Quat;
 
+pub fn scramble_rng() -> ::rand::rngs::StdRng {
+    use ::rand::SeedableRng;
+    // Miniquad provides this clock on both native and browser platforms.
+    ::rand::rngs::StdRng::seed_from_u64(macroquad::miniquad::date::now().to_bits())
+}
+
 bitflags! {
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct Move : u32 {
