@@ -12,9 +12,25 @@ const INITIAL_LEVEL_XP: f32 = 20.0;
 const LEVEL_XP_MULTIPLIER: f32 = 1.25;
 const LEVEL_TPS_MULTIPLIER: f32 = 1.08;
 const PRESTIGE_XP_SCALE: f32 = 100.0;
-const PRESTIGE_XP_MULTIPLIER: f32 = 1.1;
+const KNOWLEDGE_PER_PRESTIGE_BRACKET: u32 = 10;
+const PRESTIGE_XP_MULTIPLIER: f32 = 1.08;
 const PRESTIGE_TPS_CAP_MULTIPLIER: f32 = 1.1;
 const PRESTIGE_RECOGNITION_FLOOR_MULTIPLIER: f32 = 0.9;
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub enum PrestigeTechnique {
+    TwoLookPll,
+    TwoLookOll,
+}
+
+impl PrestigeTechnique {
+    pub fn cost(self) -> u32 {
+        match self {
+            Self::TwoLookPll => 5,
+            Self::TwoLookOll => 25,
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Technique {
@@ -44,7 +60,11 @@ pub struct PlayerSkills {
     run_xp: f32,
     level: u32,
     skill_points: u32,
-    prestige_currency: u32,
+    cube_knowledge: u32,
+    prestige_count: u32,
+    prestige_techniques: HashSet<PrestigeTechnique>,
+    tps_cap_upgrades: u32,
+    recognition_floor_upgrades: u32,
     unlocked_techniques: HashSet<Technique>,
     proficiency: HashMap<SkillId, Proficiency>,
 }
@@ -59,7 +79,11 @@ impl Default for PlayerSkills {
             run_xp: 0.0,
             level: 1,
             skill_points: 0,
-            prestige_currency: 0,
+            cube_knowledge: 0,
+            prestige_count: 0,
+            prestige_techniques: HashSet::new(),
+            tps_cap_upgrades: 0,
+            recognition_floor_upgrades: 0,
             unlocked_techniques: HashSet::new(),
             proficiency: HashMap::new(),
         }
@@ -87,16 +111,55 @@ impl PlayerSkills {
         self.recognition_floor
     }
 
-    pub fn prestige_currency(&self) -> u32 {
-        self.prestige_currency
+    pub fn cube_knowledge(&self) -> u32 {
+        self.cube_knowledge
     }
 
     pub fn xp_multiplier(&self) -> f32 {
-        PRESTIGE_XP_MULTIPLIER.powi(self.prestige_currency as i32)
+        PRESTIGE_XP_MULTIPLIER.powi(self.cube_knowledge as i32)
     }
 
     pub fn prestige_reward(&self) -> u32 {
-        (self.run_xp / PRESTIGE_XP_SCALE).sqrt().floor() as u32
+        ((self.run_xp / PRESTIGE_XP_SCALE).sqrt().floor() as u32)
+            .saturating_mul(KNOWLEDGE_PER_PRESTIGE_BRACKET)
+    }
+
+    pub fn next_prestige_threshold(&self) -> f32 {
+        let next_bracket = self.prestige_reward() / KNOWLEDGE_PER_PRESTIGE_BRACKET + 1;
+        PRESTIGE_XP_SCALE * (next_bracket as f32).powi(2)
+    }
+
+    pub fn has_prestiged(&self) -> bool {
+        self.prestige_count > 0
+    }
+
+    pub fn has_access(&self, technique: PrestigeTechnique) -> bool {
+        self.prestige_techniques.contains(&technique)
+    }
+
+    pub fn can_buy_access(&self, technique: PrestigeTechnique) -> bool {
+        self.has_prestiged()
+            && !self.has_access(technique)
+            && self.cube_knowledge >= technique.cost()
+            && (technique == PrestigeTechnique::TwoLookPll
+                || self.has_access(PrestigeTechnique::TwoLookPll))
+    }
+
+    pub fn buy_access(&mut self, technique: PrestigeTechnique) -> bool {
+        if !self.can_buy_access(technique) {
+            return false;
+        }
+        self.cube_knowledge -= technique.cost();
+        self.prestige_techniques.insert(technique);
+        true
+    }
+
+    pub fn tps_cap_upgrade_cost(&self) -> u32 {
+        2 * (self.tps_cap_upgrades + 1)
+    }
+
+    pub fn recognition_floor_upgrade_cost(&self) -> u32 {
+        2 * (self.recognition_floor_upgrades + 1)
     }
 
     pub fn level(&self) -> u32 {
@@ -137,7 +200,8 @@ impl PlayerSkills {
             return false;
         }
 
-        self.prestige_currency += reward;
+        self.cube_knowledge += reward;
+        self.prestige_count += 1;
         self.max_tps = STARTING_RUN_MAX_TPS.min(self.max_tps_cap);
         self.xp = 0.0;
         self.run_xp = 0.0;
@@ -149,19 +213,23 @@ impl PlayerSkills {
     }
 
     pub fn buy_tps_cap_upgrade(&mut self) -> bool {
-        if self.prestige_currency == 0 {
+        let cost = self.tps_cap_upgrade_cost();
+        if self.cube_knowledge < cost {
             return false;
         }
-        self.prestige_currency -= 1;
+        self.cube_knowledge -= cost;
+        self.tps_cap_upgrades += 1;
         self.max_tps_cap *= PRESTIGE_TPS_CAP_MULTIPLIER;
         true
     }
 
     pub fn buy_recognition_floor_upgrade(&mut self) -> bool {
-        if self.prestige_currency == 0 {
+        let cost = self.recognition_floor_upgrade_cost();
+        if self.cube_knowledge < cost {
             return false;
         }
-        self.prestige_currency -= 1;
+        self.cube_knowledge -= cost;
+        self.recognition_floor_upgrades += 1;
         self.recognition_floor *= PRESTIGE_RECOGNITION_FLOOR_MULTIPLIER;
         true
     }
@@ -176,6 +244,11 @@ impl PlayerSkills {
         }
         if technique != Technique::DirectCross && !self.is_unlocked(Technique::DirectCross) {
             return false;
+        }
+        match technique {
+            Technique::Pll(_) if !self.has_access(PrestigeTechnique::TwoLookPll) => return false,
+            Technique::Oll(_) if !self.has_access(PrestigeTechnique::TwoLookOll) => return false,
+            _ => {}
         }
 
         self.skill_points -= technique.cost();
@@ -303,6 +376,7 @@ mod tests {
     fn pll_algorithms_branch_directly_from_cross() {
         let mut skills = PlayerSkills {
             skill_points: 2,
+            prestige_techniques: HashSet::from([PrestigeTechnique::TwoLookPll]),
             ..Default::default()
         };
 
@@ -316,6 +390,7 @@ mod tests {
     fn oll_algorithms_branch_directly_from_cross() {
         let mut skills = PlayerSkills {
             skill_points: 2,
+            prestige_techniques: HashSet::from([PrestigeTechnique::TwoLookOll]),
             ..Default::default()
         };
 
@@ -336,7 +411,7 @@ mod tests {
     }
 
     #[test]
-    fn one_hundred_run_xp_earns_the_first_prestige_currency() {
+    fn one_hundred_run_xp_earns_the_first_cube_knowledge() {
         let mut skills = PlayerSkills {
             run_xp: 100.0,
             level: 8,
@@ -345,9 +420,9 @@ mod tests {
         };
         skills.unlocked_techniques.insert(Technique::DirectCross);
 
-        assert_eq!(skills.prestige_reward(), 1);
+        assert_eq!(skills.prestige_reward(), 10);
         assert!(skills.prestige());
-        assert_eq!(skills.prestige_currency(), 1);
+        assert_eq!(skills.cube_knowledge(), 10);
         assert_eq!(skills.run_xp(), 0.0);
         assert_eq!(skills.level(), 1);
         assert_eq!(skills.skill_points(), 0);
@@ -357,19 +432,167 @@ mod tests {
     #[test]
     fn prestige_upgrades_trade_the_banked_xp_bonus_for_permanent_caps() {
         let mut skills = PlayerSkills {
-            prestige_currency: 2,
+            cube_knowledge: 4,
+            prestige_count: 1,
+            prestige_techniques: HashSet::from([PrestigeTechnique::TwoLookPll]),
             ..Default::default()
         };
         let initial_cap = skills.max_tps_cap();
         let initial_floor = skills.recognition_floor();
-        assert!((skills.xp_multiplier() - 1.21).abs() < f32::EPSILON);
+        assert!((skills.xp_multiplier() - 1.08_f32.powi(4)).abs() < 1e-6);
 
         assert!(skills.buy_tps_cap_upgrade());
         assert!(skills.max_tps_cap() > initial_cap);
         assert!(skills.buy_recognition_floor_upgrade());
         assert!(skills.recognition_floor() < initial_floor);
-        assert_eq!(skills.prestige_currency(), 0);
+        assert_eq!(skills.cube_knowledge(), 0);
         assert_eq!(skills.xp_multiplier(), 1.0);
+    }
+
+    #[test]
+    fn prestige_rewards_use_ten_knowledge_brackets() {
+        let mut skills = PlayerSkills::default();
+        for (xp, reward) in [
+            (99.0, 0),
+            (100.0, 10),
+            (399.0, 10),
+            (400.0, 20),
+            (900.0, 30),
+        ] {
+            skills.run_xp = xp;
+            assert_eq!(skills.prestige_reward(), reward);
+            assert!(skills.next_prestige_threshold() > xp);
+        }
+        skills.run_xp = 100.0;
+        assert_eq!(skills.next_prestige_threshold(), 400.0);
+        skills.run_xp = 400.0;
+        assert_eq!(skills.next_prestige_threshold(), 900.0);
+    }
+
+    #[test]
+    fn optional_pll_purchase_leaves_five_knowledge() {
+        let mut skills = PlayerSkills {
+            run_xp: 100.0,
+            ..Default::default()
+        };
+        assert!(!skills.can_buy_access(PrestigeTechnique::TwoLookPll));
+        assert!(skills.prestige());
+        assert!(skills.buy_access(PrestigeTechnique::TwoLookPll));
+        assert_eq!(skills.cube_knowledge(), 5);
+        assert!((skills.xp_multiplier() - 1.469328).abs() < 1e-5);
+        assert!(!skills.buy_access(PrestigeTechnique::TwoLookPll));
+        assert_eq!(skills.cube_knowledge(), 5);
+    }
+
+    #[test]
+    fn spending_below_pll_cost_does_not_prevent_earning_it_later() {
+        let mut skills = PlayerSkills {
+            run_xp: 100.0,
+            ..Default::default()
+        };
+        assert!(skills.prestige());
+        assert!(skills.buy_tps_cap_upgrade());
+        assert!(skills.buy_recognition_floor_upgrade());
+        assert!(skills.buy_tps_cap_upgrade());
+        assert_eq!(skills.cube_knowledge(), 2);
+        assert!(!skills.buy_access(PrestigeTechnique::TwoLookPll));
+        assert!(!skills.has_access(PrestigeTechnique::TwoLookPll));
+        for _ in 0..10 {
+            skills.award_solve_xp(120.0);
+        }
+        assert!(skills.prestige());
+        assert_eq!(skills.cube_knowledge(), 12);
+        assert!(skills.buy_access(PrestigeTechnique::TwoLookPll));
+        assert_eq!(skills.cube_knowledge(), 7);
+    }
+
+    #[test]
+    fn first_run_cannot_learn_last_layer_algorithms() {
+        let mut skills = PlayerSkills {
+            skill_points: 10,
+            ..Default::default()
+        };
+        assert!(skills.unlock(Technique::DirectCross));
+        assert!(skills.unlock(Technique::IntuitiveF2L));
+        for algorithm in PllAlgorithm::ALL {
+            assert!(!skills.unlock(Technique::Pll(algorithm)));
+        }
+        for algorithm in OllAlgorithm::ALL {
+            assert!(!skills.unlock(Technique::Oll(algorithm)));
+        }
+        assert_eq!(skills.skill_points(), 8);
+    }
+
+    #[test]
+    fn oll_access_rewards_a_longer_second_run() {
+        let mut skills = PlayerSkills {
+            run_xp: 100.0,
+            ..Default::default()
+        };
+        assert!(skills.prestige());
+        assert!(skills.buy_access(PrestigeTechnique::TwoLookPll));
+        skills.run_xp = 100.0;
+        assert_eq!(skills.cube_knowledge() + skills.prestige_reward(), 15);
+        assert!(!skills.buy_access(PrestigeTechnique::TwoLookOll));
+        skills.run_xp = 400.0;
+        assert!(skills.prestige());
+        assert_eq!(skills.cube_knowledge(), 25);
+        assert!(skills.buy_access(PrestigeTechnique::TwoLookOll));
+        assert_eq!(skills.cube_knowledge(), 0);
+        assert_eq!(skills.xp_multiplier(), 1.0);
+    }
+
+    #[test]
+    fn access_and_buyables_survive_resets_but_learning_resets() {
+        let mut skills = PlayerSkills {
+            run_xp: 900.0,
+            ..Default::default()
+        };
+        assert!(skills.prestige());
+        assert!(skills.buy_access(PrestigeTechnique::TwoLookPll));
+        assert!(skills.buy_access(PrestigeTechnique::TwoLookOll));
+        skills.skill_points = 3;
+        assert!(skills.unlock(Technique::DirectCross));
+        assert!(skills.unlock(Technique::Pll(PllAlgorithm::Ua)));
+        assert!(skills.unlock(Technique::Oll(OllAlgorithm::Sune)));
+        skills.practice_recognition(SkillId::BuildDaisy);
+        skills.run_xp = 100.0;
+        assert!(skills.prestige());
+        assert!(skills.buy_tps_cap_upgrade());
+        assert!(skills.buy_recognition_floor_upgrade());
+        let cap = skills.max_tps_cap();
+        let floor = skills.recognition_floor();
+        skills.run_xp = 100.0;
+        assert!(skills.prestige());
+        assert!(skills.has_access(PrestigeTechnique::TwoLookPll));
+        assert!(skills.has_access(PrestigeTechnique::TwoLookOll));
+        assert!(!skills.is_unlocked(Technique::Pll(PllAlgorithm::Ua)));
+        assert!(!skills.is_unlocked(Technique::Oll(OllAlgorithm::Sune)));
+        assert_eq!(skills.proficiency(SkillId::BuildDaisy).recognition_xp, 0.0);
+        assert_eq!(skills.max_tps_cap(), cap);
+        assert_eq!(skills.recognition_floor(), floor);
+        assert_eq!(skills.tps_cap_upgrade_cost(), 4);
+        assert_eq!(skills.recognition_floor_upgrade_cost(), 4);
+    }
+
+    #[test]
+    fn buyable_costs_grow_and_failed_purchases_do_not_spend() {
+        let mut skills = PlayerSkills {
+            run_xp: 100.0,
+            ..Default::default()
+        };
+        assert!(skills.prestige());
+        assert!(skills.buy_access(PrestigeTechnique::TwoLookPll));
+        assert!(skills.buy_tps_cap_upgrade());
+        assert_eq!(skills.cube_knowledge(), 3);
+        assert_eq!(skills.tps_cap_upgrade_cost(), 4);
+        assert!(!skills.buy_tps_cap_upgrade());
+        assert_eq!(skills.cube_knowledge(), 3);
+        assert!(skills.buy_recognition_floor_upgrade());
+        assert_eq!(skills.cube_knowledge(), 1);
+        assert!((skills.xp_multiplier() - 1.08).abs() < 1e-6);
+        assert!(!skills.buy_recognition_floor_upgrade());
+        assert_eq!(skills.cube_knowledge(), 1);
     }
 
     #[test]

@@ -60,7 +60,14 @@
 - [x] Add individual 2-look PLL cases above the beginner fallbacks as they are learned.
 - [x] Add individual 2-look OLL cases as sibling choices in the skill tree.
 - [x] Add prestige resets based on total XP earned during the run.
-- [x] Give unspent prestige currency a multiplicative XP bonus.
+- [x] Give unspent Cube Knowledge a multiplicative XP bonus (1.08 per point).
+- [x] Award 10 Cube Knowledge per prestige reward bracket.
+- [x] Offer permanent PLL access for 5 Knowledge.
+- [ ] Design a guided first-prestige tutorial with explanatory text and click guidance.
+- [x] Gate 2-look OLL access behind PLL access and 25 Knowledge.
+- [x] Preserve technique access across resets while resetting learned algorithms.
+- [x] Hide unavailable prestige and last-layer algorithm buttons.
+- [ ] Replace run technique buttons with a traditional skill tree.
 - [x] Add permanent TPS-cap and recognition-floor prestige upgrades.
 - [x] Track move count and solve time.
 - [x] Track rolling AO3, AO5, AO20, and AO100 statistics.

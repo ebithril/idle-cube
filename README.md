@@ -62,27 +62,38 @@ without changing the build. To host elsewhere, upload the contents of `dist/`
 to any static web host. The checked-in root `idle_cube.wasm` is an old artifact;
 the build and deployment always use the newly compiled binary in `dist/`.
 
-## Game Controls
+## Progression and controls
 
-- **Left Click**:
-  - Click the cube to add solve progress
-  - Click upgrade buttons on the left panel to purchase upgrades
+Solves run automatically. Each solve earns XP, scaled by its time and your
+unspent Cube Knowledge bonus. Leveling grants one skill point and increases
+maximum TPS. Click technique buttons to spend skill points; Direct Cross is
+the prerequisite for Intuitive F2L and individual last-layer algorithms.
 
-## Upgrade System
+### Prestige and Cube Knowledge
 
-1. **Click Power**: Increases progress gained per click
-   - Initial cost: 10 solves
-   - Cost multiplier: 1.5x
+Prestige resets levels, run XP, skill points, learned algorithms, proficiency,
+and solve statistics. Permanent technique access and stat upgrades survive.
+The reset button appears when you can earn Knowledge; click it twice to confirm.
 
-2. **Auto-Solver**: Generates passive solve progress over time
-   - Initial cost: 50 solves
-   - Cost multiplier: 1.8x
-   - Each level adds 1 solve per second (affected by solve speed)
+Rewards are `10 × floor(sqrt(run XP / 100))`: 100 XP earns 10 Knowledge,
+400 earns 20, and 900 earns 30. Unspent Knowledge grants an XP multiplier of
+`1.08 ^ Knowledge`. Spending Knowledge reduces that bonus.
 
-3. **Solve Speed**: Reduces time required per solve
-   - Initial cost: 100 solves
-   - Cost multiplier: 2.0x
-   - Each upgrade reduces solve time by 10% (minimum 0.5s)
+After the first prestige, you can spend **5 Cube Knowledge on permanent
+2-look PLL access**. This leaves 5 for about **1.47× XP** or permanent stat
+upgrades. All purchases are optional. If you spend below the PLL cost, keep
+playing and earn more Knowledge on a later prestige.
+
+**2-look OLL access costs 25 Knowledge** and requires PLL access. Saving the
+remaining 5 lets a 400-XP second run fund OLL. Spending it means a longer run or
+additional prestiges. Access opens the algorithm branch; individual algorithms
+still cost 1 skill point and must be relearned each run.
+
+Permanent buyables start at 2 Knowledge and increase independently to 4, 6,
+8, etc. Each purchase raises the TPS cap by 10% or lowers the recognition floor
+by 10%. These change training limits; they do not instantly grant mastery.
+
+Saving is not yet implemented; restarting the game starts fresh.
 
 ## Technical Details
 

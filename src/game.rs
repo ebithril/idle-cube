@@ -1,6 +1,6 @@
 use crate::cube::Cube;
 use crate::moves::{random_scramble, scramble_rng};
-use crate::progression::{PlayerSkills, Technique};
+use crate::progression::{PlayerSkills, PrestigeTechnique, Technique};
 use crate::solver::{
     BeginnerOllSolver, DaisySolver, DaisyToCrossSolver, DirectCrossSolver, FirstLayerCornerSolver,
     IntuitiveF2LSolver, LastLayerCornerOrientationSolver, LastLayerCornerPositionSolver,
@@ -57,6 +57,14 @@ fn tps_cap_button() -> Rect {
 
 fn recognition_floor_button() -> Rect {
     Rect::new(10.0, 400.0, 300.0, 54.0)
+}
+
+fn access_button(technique: PrestigeTechnique) -> Rect {
+    let y = match technique {
+        PrestigeTechnique::TwoLookPll => 470.0,
+        PrestigeTechnique::TwoLookOll => 555.0,
+    };
+    Rect::new(10.0, y, 300.0, 65.0)
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -150,6 +158,12 @@ pub struct Game {
 
 impl Game {
     pub fn new() -> Self {
+        // Grow the font atlas before drawing, so new UI labels cannot invalidate
+        // textures already referenced by draw calls in the same frame.
+        let characters: String = (' '..='~').collect();
+        for size in [13, 16, 17, 18, 19, 20, 24, 30] {
+            measure_text(&characters, None, size, 1.0);
+        }
         let player_skills = PlayerSkills::default();
         let mut cube = Cube::new();
         cube.set_tps(player_skills.max_tps());
@@ -315,10 +329,22 @@ impl Game {
                     return true;
                 }
                 self.prestige_confirmation = true;
-            } else if tps_cap_button().contains(mouse) {
+            } else if self.player_skills.has_prestiged()
+                && access_button(PrestigeTechnique::TwoLookPll).contains(mouse)
+            {
+                self.player_skills.buy_access(PrestigeTechnique::TwoLookPll);
+                self.prestige_confirmation = false;
+            } else if self.player_skills.has_prestiged()
+                && access_button(PrestigeTechnique::TwoLookOll).contains(mouse)
+            {
+                self.player_skills.buy_access(PrestigeTechnique::TwoLookOll);
+                self.prestige_confirmation = false;
+            } else if self.player_skills.has_prestiged() && tps_cap_button().contains(mouse) {
                 self.player_skills.buy_tps_cap_upgrade();
                 self.prestige_confirmation = false;
-            } else if recognition_floor_button().contains(mouse) {
+            } else if self.player_skills.has_prestiged()
+                && recognition_floor_button().contains(mouse)
+            {
                 self.player_skills.buy_recognition_floor_upgrade();
                 self.prestige_confirmation = false;
             } else if direct_cross_button().contains(mouse) {
@@ -430,77 +456,135 @@ impl Game {
         let prestige_reward = self.player_skills.prestige_reward();
         draw_text(
             &format!(
-                "RUN XP: {:.0}    PRESTIGE: {}    XP: x{:.3}",
+                "RUN XP: {:.0}    XP: x{:.3}",
                 self.player_skills.run_xp(),
-                self.player_skills.prestige_currency(),
                 self.player_skills.xp_multiplier()
             ),
-            prestige.x,
-            prestige.y - 10.0,
+            10.0,
+            235.0,
             20.0,
             WHITE,
         );
-        draw_rectangle(
-            prestige.x,
-            prestige.y,
-            prestige.w,
-            prestige.h,
-            if prestige_reward > 0 {
-                PURPLE
+        if self.player_skills.has_prestiged() {
+            draw_text(
+                &format!("CUBE KNOWLEDGE: {}", self.player_skills.cube_knowledge()),
+                10.0,
+                258.0,
+                20.0,
+                GOLD,
+            );
+        }
+        if prestige_reward > 0 {
+            draw_rectangle(prestige.x, prestige.y, prestige.w, prestige.h, PURPLE);
+            let text = if self.prestige_confirmation {
+                format!("CONFIRM RESET: +{prestige_reward} CK")
             } else {
-                DARKGRAY
-            },
-        );
-        let prestige_text = if self.prestige_confirmation {
-            format!("CONFIRM RESET FOR {prestige_reward} PRESTIGE")
-        } else if prestige_reward > 0 {
-            format!("PRESTIGE RESET: +{prestige_reward}")
-        } else {
-            "PRESTIGE AT 100 RUN XP".to_owned()
-        };
-        draw_text(
-            &prestige_text,
-            prestige.x + 10.0,
-            prestige.y + 34.0,
-            20.0,
-            WHITE,
-        );
+                format!("PRESTIGE: +{prestige_reward} KNOWLEDGE")
+            };
+            draw_text(&text, prestige.x + 10.0, prestige.y + 34.0, 20.0, WHITE);
+        } else if !self.player_skills.has_prestiged() {
+            draw_text("First prestige: 100 run XP", 10.0, 300.0, 19.0, LIGHTGRAY);
+        }
 
-        let has_prestige = self.player_skills.prestige_currency() > 0;
-        let tps_cap = tps_cap_button();
-        draw_rectangle(
-            tps_cap.x,
-            tps_cap.y,
-            tps_cap.w,
-            tps_cap.h,
-            if has_prestige { DARKGREEN } else { DARKGRAY },
-        );
-        draw_text(
-            &format!("+10% TPS CAP ({:.2}) - 1", self.player_skills.max_tps_cap()),
-            tps_cap.x + 10.0,
-            tps_cap.y + 34.0,
-            20.0,
-            WHITE,
-        );
+        if self.player_skills.has_prestiged() {
+            draw_text(
+                &format!(
+                    "Next reward at {:.0} run XP",
+                    self.player_skills.next_prestige_threshold()
+                ),
+                10.0,
+                329.0,
+                16.0,
+                LIGHTGRAY,
+            );
 
-        let recognition_floor = recognition_floor_button();
-        draw_rectangle(
-            recognition_floor.x,
-            recognition_floor.y,
-            recognition_floor.w,
-            recognition_floor.h,
-            if has_prestige { DARKGREEN } else { DARKGRAY },
-        );
-        draw_text(
-            &format!(
-                "-10% RECOGNITION FLOOR ({:.3}s) - 1",
-                self.player_skills.recognition_floor()
-            ),
-            recognition_floor.x + 10.0,
-            recognition_floor.y + 34.0,
-            18.0,
-            WHITE,
-        );
+            let tps_cap = tps_cap_button();
+            let cost = self.player_skills.tps_cap_upgrade_cost();
+            draw_rectangle(
+                tps_cap.x,
+                tps_cap.y,
+                tps_cap.w,
+                tps_cap.h,
+                if self.player_skills.cube_knowledge() >= cost {
+                    DARKGREEN
+                } else {
+                    DARKGRAY
+                },
+            );
+            draw_text(
+                &format!(
+                    "+10% TPS CAP ({:.2}) - {cost} CK",
+                    self.player_skills.max_tps_cap()
+                ),
+                tps_cap.x + 10.0,
+                tps_cap.y + 34.0,
+                18.0,
+                WHITE,
+            );
+            let recognition = recognition_floor_button();
+            let cost = self.player_skills.recognition_floor_upgrade_cost();
+            draw_rectangle(
+                recognition.x,
+                recognition.y,
+                recognition.w,
+                recognition.h,
+                if self.player_skills.cube_knowledge() >= cost {
+                    DARKGREEN
+                } else {
+                    DARKGRAY
+                },
+            );
+            draw_text(
+                &format!("-10% MIN RECOGNITION - {cost} CK"),
+                recognition.x + 10.0,
+                recognition.y + 23.0,
+                18.0,
+                WHITE,
+            );
+            draw_text(
+                &format!("Current: {:.3}s", self.player_skills.recognition_floor()),
+                recognition.x + 10.0,
+                recognition.y + 44.0,
+                16.0,
+                LIGHTGRAY,
+            );
+
+            // Permanent access branches; algorithms are learned with run skill points.
+            draw_line(160.0, 535.0, 160.0, 555.0, 2.0, LIGHTGRAY);
+            for (technique, name) in [
+                (PrestigeTechnique::TwoLookPll, "2-LOOK PLL ACCESS"),
+                (PrestigeTechnique::TwoLookOll, "2-LOOK OLL ACCESS"),
+            ] {
+                let button = access_button(technique);
+                let owned = self.player_skills.has_access(technique);
+                let available = self.player_skills.can_buy_access(technique);
+                draw_rectangle(
+                    button.x,
+                    button.y,
+                    button.w,
+                    button.h,
+                    if owned {
+                        DARKGREEN
+                    } else if available {
+                        BLUE
+                    } else {
+                        DARKGRAY
+                    },
+                );
+                draw_text(name, button.x + 10.0, button.y + 24.0, 20.0, WHITE);
+                let status = if owned {
+                    "PERMANENTLY UNLOCKED".to_owned()
+                } else if technique == PrestigeTechnique::TwoLookOll
+                    && !self.player_skills.has_access(PrestigeTechnique::TwoLookPll)
+                {
+                    format!("{} CK - requires PLL access", technique.cost())
+                } else {
+                    format!("{} CK - unlock skill branch", technique.cost())
+                };
+                draw_text(&status, button.x + 10.0, button.y + 48.0, 16.0, LIGHTGRAY);
+            }
+            draw_text("Unspent Knowledge boosts XP.", 10.0, 645.0, 17.0, LIGHTGRAY);
+        }
 
         let direct_cross = direct_cross_button();
         let cross_unlocked = self.player_skills.is_unlocked(Technique::DirectCross);
@@ -612,90 +696,94 @@ impl Game {
             LIGHTGRAY,
         );
 
-        draw_text(
-            "2-LOOK PLL - EACH ALGORITHM COSTS 1 SP",
-            direct_cross.x,
-            265.0,
-            18.0,
-            WHITE,
-        );
-        for (index, algorithm) in PllAlgorithm::ALL.into_iter().enumerate() {
-            let button = pll_button(index);
-            let unlocked = self.player_skills.is_unlocked(Technique::Pll(algorithm));
-            let available = cross_unlocked && self.player_skills.skill_points() > 0;
-            draw_rectangle(
-                button.x,
-                button.y,
-                button.w,
-                button.h,
-                if unlocked {
-                    DARKGREEN
-                } else if available {
-                    BLUE
-                } else {
-                    DARKGRAY
-                },
-            );
+        if self.player_skills.has_access(PrestigeTechnique::TwoLookPll) {
             draw_text(
-                algorithm.name(),
-                button.x + 8.0,
-                button.y + 22.0,
-                20.0,
+                "2-LOOK PLL - EACH ALGORITHM COSTS 1 SP",
+                direct_cross.x,
+                265.0,
+                18.0,
                 WHITE,
             );
-            draw_text(
-                if unlocked {
-                    "LEARNED"
-                } else if cross_unlocked {
-                    "1 SP"
-                } else {
-                    "LOCKED"
-                },
-                button.x + 8.0,
-                button.y + 43.0,
-                16.0,
-                LIGHTGRAY,
-            );
+            for (index, algorithm) in PllAlgorithm::ALL.into_iter().enumerate() {
+                let button = pll_button(index);
+                let unlocked = self.player_skills.is_unlocked(Technique::Pll(algorithm));
+                let available = cross_unlocked && self.player_skills.skill_points() > 0;
+                draw_rectangle(
+                    button.x,
+                    button.y,
+                    button.w,
+                    button.h,
+                    if unlocked {
+                        DARKGREEN
+                    } else if available {
+                        BLUE
+                    } else {
+                        DARKGRAY
+                    },
+                );
+                draw_text(
+                    algorithm.name(),
+                    button.x + 8.0,
+                    button.y + 22.0,
+                    20.0,
+                    WHITE,
+                );
+                draw_text(
+                    if unlocked {
+                        "LEARNED"
+                    } else if cross_unlocked {
+                        "1 SP"
+                    } else {
+                        "LOCKED"
+                    },
+                    button.x + 8.0,
+                    button.y + 43.0,
+                    16.0,
+                    LIGHTGRAY,
+                );
+            }
         }
 
-        draw_text("2-LOOK OLL - 1 SP EACH", direct_cross.x, 478.0, 18.0, WHITE);
-        for (index, algorithm) in OllAlgorithm::ALL.into_iter().enumerate() {
-            let button = oll_button(index);
-            let unlocked = self.player_skills.is_unlocked(Technique::Oll(algorithm));
-            let available = cross_unlocked && self.player_skills.skill_points() > 0;
-            draw_rectangle(
-                button.x,
-                button.y,
-                button.w,
-                button.h,
-                if unlocked {
-                    DARKGREEN
-                } else if available {
-                    BLUE
-                } else {
-                    DARKGRAY
-                },
-            );
-            draw_text(
-                algorithm.name(),
-                button.x + 6.0,
-                button.y + 18.0,
-                16.0,
-                WHITE,
-            );
-            draw_text(
-                if unlocked {
-                    "LEARNED"
-                } else if cross_unlocked {
-                    "1 SP"
-                } else {
-                    "LOCKED"
-                },
-                button.x + 6.0,
-                button.y + 34.0,
-                13.0,
-                LIGHTGRAY,
-            );
+        if self.player_skills.has_access(PrestigeTechnique::TwoLookOll) {
+            draw_text("2-LOOK OLL - 1 SP EACH", direct_cross.x, 478.0, 18.0, WHITE);
+            for (index, algorithm) in OllAlgorithm::ALL.into_iter().enumerate() {
+                let button = oll_button(index);
+                let unlocked = self.player_skills.is_unlocked(Technique::Oll(algorithm));
+                let available = cross_unlocked && self.player_skills.skill_points() > 0;
+                draw_rectangle(
+                    button.x,
+                    button.y,
+                    button.w,
+                    button.h,
+                    if unlocked {
+                        DARKGREEN
+                    } else if available {
+                        BLUE
+                    } else {
+                        DARKGRAY
+                    },
+                );
+                draw_text(
+                    algorithm.name(),
+                    button.x + 6.0,
+                    button.y + 18.0,
+                    16.0,
+                    WHITE,
+                );
+                draw_text(
+                    if unlocked {
+                        "LEARNED"
+                    } else if cross_unlocked {
+                        "1 SP"
+                    } else {
+                        "LOCKED"
+                    },
+                    button.x + 6.0,
+                    button.y + 34.0,
+                    13.0,
+                    LIGHTGRAY,
+                );
+            }
         }
 
         let xp_bar = Rect::new(20.0, screen_height() - 38.0, screen_width() - 40.0, 22.0);
